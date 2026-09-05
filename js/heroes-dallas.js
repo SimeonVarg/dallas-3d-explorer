@@ -173,6 +173,19 @@
           prof.push([z, ngon(16, Math.max(1.2, R * Math.sqrt(k)))]);
         }
         parts.push(...stack(prof, 'trim'));
+        // THE LAMP RING. 260 lamps run round the ball's widest course and they
+        // are what this tower IS after dark — the whole structure exists to be
+        // looked at, and half of that is the light show.
+        //
+        // Drawn as a thin band standing 0.6 m proud of the sphere at its
+        // equator rather than by making the ball itself emissive. Making the
+        // whole ball an `edge` part was the first version, and it works at
+        // night and is badly wrong by day: the ball reads as a glowing orange
+        // sphere at noon, when it is in fact a grey lattice. A band is
+        // unobtrusive by day and is the only thing visible at night, which is
+        // what the real one does.
+        parts.push({ base: C - 3.2, top: C + 3.2, part: 'edge',
+                     ring: ngon(16, R + 0.6) });
         // The mast above the ball, to the published 171.9 m.
         parts.push(...stack([[168, ngon(8, 1.1)], [171.9, ngon(8, 0.7)]], 'trim'));
         return parts;

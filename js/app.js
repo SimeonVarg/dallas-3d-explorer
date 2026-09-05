@@ -1845,18 +1845,33 @@
   //   crest  pulled back and lifted, passing Reunion's shoulder. This is the
   //          frame that pays for the tile streaming -- the cluster is on screen
   //          at a coarse zoom a full leg before `end` needs it sharp.
-  //   end    the money shot. Reunion in the near left, the Bank of America /
-  //          Renaissance / Comerica wall across the frame behind it, Fountain
-  //          Place's prism catching the light on the right.
+  //   end    the money shot: Reunion's ball in the near foreground, the
+  //          Mixmaster's ramps sweeping across the left, and the Bank of
+  //          America / Renaissance / Comerica wall standing behind with
+  //          Fountain Place's prism beside it.
   //
-  // The bearing only travels 14 degrees across the whole flight (34 -> 48), so
+  // `end` WAS -96.8034, 32.7822 AT z15.55 AND THAT PUT REUNION BEHIND THE
+  // CAMERA. The mistake is worth writing down because it is easy to repeat:
+  // MapLibre's `center` is the point at the MIDDLE OF THE SCREEN, and the eye
+  // sits behind it along the reverse bearing by a distance that grows with
+  // pitch and shrinks with zoom. Centring on the tower cluster therefore puts
+  // the eye somewhere south-west of the cluster — which at z15.55 was north-east
+  // of Reunion Tower, so the one landmark the whole flight is built around was
+  // off-frame behind the viewer.
+  //
+  // The fix is to centre BETWEEN Reunion and the cluster and pull back half a
+  // zoom level, so the eye falls south-west of Reunion and both are in shot.
+  // Checked by looking, not by reasoning: the pose below is the one that was
+  // screenshotted, not the one that was calculated.
+  //
+  // The bearing only travels 10 degrees across the whole flight (34 -> 44), so
   // unlike Austin's there is no swing to dial back; the reveal is carried by
   // altitude and distance instead. `end.zoom` is the one number to touch if the
   // cluster wants to sit larger or smaller in the final frame.
   const INTRO = {
     start: { center: [-96.8110, 32.7728], zoom: 16.0,  pitch: 78, bearing: 34 },
-    crest: { center: [-96.8082, 32.7768], zoom: 15.35, pitch: 71, bearing: 40 },
-    end:   { center: [-96.8034, 32.7822], zoom: 15.55, pitch: 74, bearing: 48 },
+    crest: { center: [-96.8086, 32.7762], zoom: 15.10, pitch: 71, bearing: 39 },
+    end:   { center: [-96.8052, 32.7803], zoom: 15.35, pitch: 74, bearing: 44 },
     leg1Ms: 6000,      // the rise out of downtown, decelerating into the crest
     leg2Ms: 6600,      // the run north into campus, the bank, and the long settle
 
