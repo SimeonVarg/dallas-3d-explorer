@@ -89,6 +89,30 @@ marking those immutable would mean a rebuild deploys correctly and then never
 reaches anyone who had already visited — for a year, indistinguishable from a
 cache miss.
 
+## Performance
+
+The roofscape was the one addition big enough to be worth an A/B, because it
+roughly doubles the extrusion count in a downtown frame. Measured at z16.9 over
+Pacific Place, seven interleaved reps, minimum of each (this repo's rule: never
+trust one reading, and take the minimum of interleaved reps):
+
+    roofscape + pitched roofs ON     45.4 ms
+    the same four layers hidden      43.1 ms
+    ------------------------------------------
+    cost of the whole roofscape       2.3 ms   (~5%)
+
+That is cheap for what it buys, and the tier split is why: the 8,682 small
+clutter features are held back until z16.2 and are not fetched before then.
+
+The ABSOLUTE figure above is not a frame rate. It was taken by driving
+`map._render()` in a loop with the automation pane hidden, which has no vsync
+and no compositor — only the DELTA between the two arms is meaningful. A real
+interactive frame rate still wants measuring on a displayed window.
+
+A visitor downloads 29 MB of GeoJSON, which is **4.0 MB on the wire** after
+gzip — about 25,000 visits inside Vercel's free 100 GB. `trees.geojson` is 40%
+of it and is the first place to look if that ever matters.
+
 ## Honesty notes
 
 These are the places where the render is a claim rather than a measurement, in
