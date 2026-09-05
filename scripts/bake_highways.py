@@ -93,12 +93,57 @@ MIN_DECK_M = 2.0
 # than a staircase at any altitude the camera actually flies at.
 STEP_M = 1.1
 # Deck slab thickness — the visible depth of the structure under the road.
-SLAB_M = 1.5
+# 1.5 m was the first value and it is right for the SLAB. It is wrong for the
+# whole superstructure, which is slab plus girders: a 30 m span sits on girders
+# about 1.6 m deep, so the visible edge of a highway bridge is nearer 2.6 m.
+# At 1.5 m the decks read as ribbons.
+SLAB_M = 2.6
+
+# ── DECK WIDTH ───────────────────────────────────────────────────────────
+#
+# THE BUG THIS REPLACES, because it is the single reason the first version of
+# this file rendered the Mixmaster as a chain-link fence.
+#
+# Deck width was taken straight from bake_roads.py's `w`, which is
+# lanes x lane-width. For a `motorway_link` with no `lanes` tag that is
+# 1 x 3.66 = 3.66 m — and 3.66 m is A LANE, not a structure. 198 of the deck
+# slabs came out 4 m wide and 61 came out 3 m. A 4 m ribbon 2.6 m thick on
+# 2.2 m posts is not a viaduct; it is a fence, and that is exactly what it
+# looked like.
+#
+# A highway structure is the carriageway PLUS the things that are always there
+# and are never in the lane count:
+#
+#     inside shoulder                     1.2 m   (ramps) to 3.0 m (mainline)
+#     outside shoulder                    3.0 m
+#     two concrete parapets at 0.5 m      1.0 m
+#     ------------------------------------------
+#     added to every deck                 5.2 m   minimum, more on the mainline
+#
+# So a single-lane flyover is about 10 m across the structure, not 3.7, and a
+# six-lane mainline is about 30 m, not 22. FLOOR_M is the "one lane plus all of
+# that" figure and nothing gets narrower than it.
+SHOULDER_M = 5.2          # shoulders + parapets, both sides, added to every deck
+MAINLINE_EXTRA_M = 2.4    # motorway/trunk mainline runs wider shoulders still
+FLOOR_M = 9.8             # no structure is narrower than a one-lane flyover
+
+# The parapet: a raised lip down both edges of the deck. This is THE cue that
+# says "highway bridge" rather than "grey plank" — the eye reads the barrier,
+# not the road surface, and without it a deck seen from below or side-on is a
+# featureless slab. Cheap: two thin strips per deck piece.
+PARAPET_W = 0.55
+PARAPET_H = 0.95
 
 # Piers. Only under decks high enough that the gap beneath is legible.
-PIER_MIN_H = 8.0
-PIER_SPACING_M = 38.0
-PIER_W = 2.2
+#
+# WIDER AND FURTHER APART than the first version (2.2 m every 38 m). Real
+# highway bents are 1.5-2 m columns but they read as posts at this scale, and
+# 38 m spacing put so many of them under the interchange that they merged into
+# a picket line. A pier is a BENT — a broad column, often a hammerhead — and
+# 30 m of span between them is short for modern construction anyway.
+PIER_MIN_H = 7.5
+PIER_SPACING_M = 55.0
+PIER_W = 3.4
 
 LINKS = {"motorway_link", "trunk_link", "primary_link", "secondary_link",
          "tertiary_link"}
@@ -161,6 +206,7 @@ def main():
     # ── 3. vertex heights per way ────────────────────────────────────────
     out = []
     n_deck = n_ramp = n_pier = 0
+    n_parapet = [0]
     for w in ways:
         p, coords = w["p"], w["co"]
         is_link = p.get("c") in LINKS
@@ -185,7 +231,12 @@ def main():
         if elevated:
             n_deck += 1
 
-        width = max(4.0, float(p.get("w", 7.0)))
+        cls = p.get("c", "motorway")
+        mainline = cls in ("motorway", "trunk")
+        width = max(FLOOR_M,
+                    float(p.get("w", 7.0)) + SHOULDER_M
+                    + (MAINLINE_EXTRA_M if mainline else 0.0))
+
         for seg, h in segment(coords, heights):
             poly = slab(seg, width)
             if poly is None:
@@ -194,15 +245,33 @@ def main():
                 "type": "Feature",
                 "properties": {
                     "k": "deck",
-                    "c": p.get("c", "motorway"),
+                    "c": cls,
                     "b": round(max(0.0, h - SLAB_M), 2),
                     "h": round(h, 2),
                     "lk": 1 if is_link else 0,
                 },
                 "geometry": mapping(poly),
             })
+            # The parapets, as a ring: the full-width slab minus an inset one.
+            # A ring polygon rather than two separate strips, because two strips
+            # need the deck's local normal at every vertex to place them and a
+            # difference does not — shapely already knows where the edge is.
+            inner = slab(seg, max(1.0, width - 2 * PARAPET_W))
+            if inner is not None:
+                lip = poly.difference(inner)
+                if not lip.is_empty and lip.area > 0:
+                    out.append({
+                        "type": "Feature",
+                        "properties": {
+                            "k": "parapet",
+                            "b": round(h, 2),
+                            "h": round(h + PARAPET_H, 2),
+                        },
+                        "geometry": mapping(lip),
+                    })
+                    n_parapet[0] += 1
             if h >= PIER_MIN_H:
-                for pier in piers(seg, h):
+                for pier in piers(seg, h, width):
                     out.append(pier)
                     n_pier += 1
 
@@ -215,7 +284,8 @@ def main():
     hs = sorted(f["properties"]["h"] for f in decks)
     print("wrote data/highways.geojson  %d features  (%d KB)" % (len(out), kb))
     print("  source ways: %d decks, %d ramps" % (n_deck, n_ramp))
-    print("  slabs: %d   piers: %d" % (len(decks), n_pier))
+    print("  slabs: %d   parapets: %d   piers: %d"
+          % (len(decks), n_parapet[0], n_pier))
     if hs:
         print("  deck heights: min %.1f  median %.1f  max %.1f m"
               % (hs[0], hs[len(hs) // 2], hs[-1]))
@@ -278,14 +348,30 @@ def slab(coords, width_m):
             ded.append(q)
     if len(ded) < 2:
         return None
-    poly = LineString(ded).buffer(width_m / 2.0, cap_style=2, join_style=2)
+    # ROUND JOINS, NOT MITRED. join_style=2 (mitre) was the first version and it
+    # is the reason the ramps looked faceted: at every vertex of a curve a mitre
+    # projects a sharp corner outward, so a smoothly digitised loop renders as a
+    # chain of spikes, and the tighter the curve the worse it gets — which means
+    # it is worst exactly on the interchange loops this file exists to draw.
+    # join_style=1 rounds them, and `resolution` controls how finely.
+    #
+    # resolution=6 gives 6 segments per quarter-turn. That is more vertices than
+    # a mitre and it is worth it here and nowhere else: the whole visual claim of
+    # this file is that the Mixmaster's ramps CURVE.
+    poly = LineString(ded).buffer(width_m / 2.0, cap_style=2, join_style=1,
+                                  resolution=6)
     if poly.is_empty:
         return None
     return shapely_transform(lambda x, y, z=None: to_deg(x, y), poly)
 
 
-def piers(coords, h):
-    """Square columns under a deck, every PIER_SPACING_M along it."""
+def piers(coords, h, deck_w=None):
+    """Bents under a deck, every PIER_SPACING_M along it.
+
+    `deck_w` widens the bent under a wide deck: a 30 m mainline carried on the
+    same 3.4 m column as a 10 m ramp reads as unsupported. Capped, because a
+    bent as wide as its deck reads as a wall, not a column.
+    """
     pts = [to_m(*c) for c in coords]
     acc, out = 0.0, []
     for i in range(1, len(pts)):
@@ -298,7 +384,7 @@ def piers(coords, h):
             need = PIER_SPACING_M - acc
             t = need / seg
             cx, cy = ax + (bx - ax) * t, ay + (by - ay) * t
-            r = PIER_W / 2.0
+            r = min(PIER_W, 0.16 * (deck_w or PIER_W) + 1.4) / 2.0
             ring = [to_deg(cx - r, cy - r), to_deg(cx + r, cy - r),
                     to_deg(cx + r, cy + r), to_deg(cx - r, cy + r)]
             ring.append(ring[0])

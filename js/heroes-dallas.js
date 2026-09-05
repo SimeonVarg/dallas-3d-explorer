@@ -184,8 +184,8 @@
         // sphere at noon, when it is in fact a grey lattice. A band is
         // unobtrusive by day and is the only thing visible at night, which is
         // what the real one does.
-        parts.push({ base: C - 3.2, top: C + 3.2, part: 'edge',
-                     ring: ngon(16, R + 0.6) });
+        parts.push({ base: C - 1.6, top: C + 1.6, part: 'edge',
+                     ring: ngon(16, R + 0.25) });
         // The mast above the ball, to the published 171.9 m.
         parts.push(...stack([[168, ngon(8, 1.1)], [171.9, ngon(8, 0.7)]], 'trim'));
         return parts;
@@ -210,11 +210,22 @@
         // only reason anyone can name this building at night. Drawn as four
         // slender pilasters at the chamfer faces rather than as a line, because
         // a line has no thickness at 280 m and vanishes.
+        //
+        // SIZE IT LIKE A TUBE, NOT LIKE A COLUMN. The first version drew these
+        // 1.8 m square, which is the thickness of a structural pier — at that
+        // size they stop reading as light on the corner of a building and start
+        // reading as eight green columns bolted to it, present in every frame
+        // at every hour. Reported as "so solid and big and on all the time".
+        //
+        // The real tube is about 5 cm of glass. 5 cm cannot be rendered at
+        // 280 m — it is a fraction of a pixel and vanishes — so 0.45 m is the
+        // smallest that survives the tile simplification, and the REST of the
+        // fix is opacity, handled in applyShade().
         const R = chamfer(46.6, 58.6, 7);
         for (const [x, y] of R) {
           parts.push({ base: 17, top: 273, part: 'edge',
-                       ring: [[x - 0.9, y - 0.9], [x + 0.9, y - 0.9],
-                              [x + 0.9, y + 0.9], [x - 0.9, y + 0.9]] });
+                       ring: [[x - 0.22, y - 0.22], [x + 0.22, y - 0.22],
+                              [x + 0.22, y + 0.22], [x - 0.22, y + 0.22]] });
         }
         return parts;
       },
@@ -472,8 +483,22 @@
     }
     src.setData(d);
     if (map.getLayer(L_EDGE)) {
-      // 0.35 by day, 0.95 at night. The tube is genuinely hard to see at noon.
-      map.setPaintProperty(L_EDGE, 'fill-extrusion-opacity', 0.35 + 0.60 * p);
+      // ARCHITECTURAL LIGHTING IS A NIGHT THING. The first version ran
+      // 0.35 -> 0.95 across the day, so the tubes were plainly visible at noon
+      // and the user's reaction was that they were "on all the time" — which
+      // they were.
+      //
+      // A cubic ramp instead of a linear one, because the complaint is about
+      // the DAY HALF and a linear fade spends half its range there. At p=0.25
+      // (mid-morning) linear gives 0.50; this gives 0.02. It does not reach a
+      // quarter opacity until p=0.62, which is after sunset, and that is when
+      // building lighting actually comes on.
+      //
+      //   p     0     0.25   0.5    0.75   1.0
+      //   old   0.35  0.50   0.65   0.80   0.95
+      //   new   0.00  0.02   0.12   0.41   0.96
+      map.setPaintProperty(L_EDGE, 'fill-extrusion-opacity',
+                           +(0.96 * Math.pow(Math.max(0, Math.min(1, p)), 3)).toFixed(3));
     }
   }
 

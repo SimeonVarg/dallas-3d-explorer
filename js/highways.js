@@ -50,6 +50,7 @@
   const SRC = 'city-highways';
   const L_DECK = 'highway-deck';
   const L_DECK_TOP = 'highway-deck-top';
+  const L_PARAPET = 'highway-parapet';
   const L_PIER = 'highway-pier';
 
   // Taste block. Every number the look depends on, in one place.
@@ -64,6 +65,11 @@
     // "road" rather than "wall" when the deck is seen from above.
     top:    ['#6f6c69', '#7a6f66', '#35353b'],
     pier:   ['#8e8b87', '#96897d', '#3f3f45'],
+    // The parapet is fresh precast concrete against a weathered deck — the same
+    // family, one step lighter. It has to be LIGHTER than the deck rather than
+    // darker: the barrier catches the sky and the deck is in its own shadow, so
+    // a darker parapet reads as a gap in the structure instead of a wall on it.
+    parapet: ['#b4b0a9', '#c0ac99', '#54545c'],
   };
 
   function lerpHex(a, b, t) {
@@ -152,6 +158,24 @@
       },
     }, beforeId);
 
+    // THE PARAPET IS THE WHOLE READ. A deck without one is a grey plank: from
+    // above it is a stripe, from the side it is a slab, and from below it is a
+    // ceiling. The barrier is what the eye actually uses to identify a highway
+    // structure, and it costs one more layer over polygons the bake already
+    // emitted. Drawn LAST of the structure layers so it wins the depth test
+    // against the wearing course it stands on.
+    map.addLayer({
+      id: L_PARAPET, type: 'fill-extrusion', source: SRC, minzoom: HW.minZoom + 0.5,
+      filter: ['==', ['get', 'k'], 'parapet'],
+      paint: {
+        'fill-extrusion-color': at(HW.parapet, p),
+        'fill-extrusion-base': ['get', 'b'],
+        'fill-extrusion-height': ['get', 'h'],
+        'fill-extrusion-opacity': HW.opacity,
+        'fill-extrusion-vertical-gradient': true,
+      },
+    }, beforeId);
+
     hookTimeOfDay();
 
     // Debug/status hook, the same shape as window.__fly and window.__sky.
@@ -209,6 +233,7 @@
           map.setPaintProperty(L_DECK, 'fill-extrusion-color', at(HW.deck, p));
           map.setPaintProperty(L_DECK_TOP, 'fill-extrusion-color', at(HW.top, p));
           map.setPaintProperty(L_PIER, 'fill-extrusion-color', at(HW.pier, p));
+          map.setPaintProperty(L_PARAPET, 'fill-extrusion-color', at(HW.parapet, p));
         }
       } catch (e) { /* a missing layer is not worth taking the slider down for */ }
       return r;

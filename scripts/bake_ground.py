@@ -161,6 +161,110 @@ def signed_area(ring):
     return a / 2.0
 
 
+# ── ROAD SURFACES ────────────────────────────────────────────────────────
+#
+# THE BUG THIS FIXES, and it is the largest single thing wrong with the render.
+#
+# js/ground.js draws the road network from THREE layers — ROAD_CASE, ROAD and
+# CLOSE_ROAD — and all three filter on `k == 'roadarea'` against THIS file. The
+# only layer that reads data/roads.geojson is ROAD_FAR, and that one is filtered
+# to `far == 1`. Its own comment says so: "What is left on the line: the
+# far-field armature only."
+#
+# So without roadarea polygons, EVERY NEAR-FIELD ROAD IN DOWNTOWN DALLAS IS NOT
+# DRAWN. Not drawn thin, not drawn flat — not drawn. What reads as "the roads"
+# in a frame is the far-field hairlines plus 526 asphalt parking lots, which is
+# why the user's verdict was that the roads look horrible. They were looking at
+# car parks.
+#
+# WHY POLYGONS AND NOT JUST A WIDER LINE. A MapLibre `line` is screen-space: it
+# holds its pixel width regardless of pitch, so at pitch 74 a road running to the
+# horizon stays the same width all the way and fans out instead of converging.
+# A polygon is on the ground and obeys perspective. Austin's own note calls this
+# out (scripts/verify/road-fan.mjs).
+#
+# ONE FEATURE PER (CLASS, SURFACE), NOT ONE PER ROAD. 4,711 near-field ways
+# buffered individually is 4,711 polygons and about 8 MB. Unioned per drawn
+# class it is a couple of dozen multipolygons and a tenth of that, and the
+# rendering is identical because js/ground.js only ever branches on `c` and `s`.
+# Everything else — name, lanes, oneway, the bike tags — is centreline business
+# and stays in data/roads.geojson, which is untouched.
+ROADAREA_ON = True
+SIMPLIFY_M = 0.35        # ~1/3 of a lane line; below what the camera resolves
+
+
+def widen_roads(near_only=True):
+    """k:'road' LineStrings in data/roads.geojson -> k:'roadarea' Polygons."""
+    if not ROADAREA_ON:
+        return []
+    src = os.path.join(ROOT, "data", "roads.geojson")
+    if not os.path.exists(src):
+        print("  [skip] data/roads.geojson not found — run bake_roads.py first")
+        return []
+    from shapely.geometry import LineString, mapping as _map
+    from shapely.ops import unary_union, transform as _tf
+
+    lat0 = 32.7820
+    mlon = 111320.0 * math.cos(math.radians(lat0))
+    mlat = 111132.0
+    to_m = lambda x, y, z=None: ((x + 96.8010) * mlon, (y - lat0) * mlat)
+    to_deg = lambda x, y, z=None: (x / mlon - 96.8010, y / mlat + lat0)
+
+    with open(src, encoding="utf-8") as f:
+        roads = json.load(f)["features"]
+
+    groups = {}
+    n_in = n_skip_far = n_skip_elev = 0
+    for f in roads:
+        p = f["properties"]
+        if p.get("k") != "road" or f["geometry"]["type"] != "LineString":
+            continue
+        if near_only and p.get("far"):
+            n_skip_far += 1
+            continue
+        # Elevated structure belongs to js/highways.js, which draws it as a deck
+        # at its own height. Laying a ground-level slab under a viaduct as well
+        # paints the freeway twice — once correctly in the air and once wrongly
+        # on the dirt — and the ground copy is what you see through the gaps.
+        if p.get("bridge") or (p.get("layer") or 0) > 0:
+            n_skip_elev += 1
+            continue
+        coords = f["geometry"]["coordinates"]
+        if len(coords) < 2:
+            continue
+        w = float(p.get("w") or 9.0)
+        if w <= 0.2:
+            continue
+        try:
+            line = LineString([to_m(*c) for c in coords])
+            # Mitre joins here, unlike bake_highways.py's decks. A street grid
+            # is straight lines meeting at right angles, so rounding the joins
+            # buys nothing and costs a dozen vertices per junction across 4,700
+            # ways. The decks curve; these do not.
+            poly = line.buffer(w / 2.0, cap_style=2, join_style=2, mitre_limit=2.0)
+        except Exception:       # noqa: BLE001 — one bad way is not fatal
+            continue
+        if poly.is_empty:
+            continue
+        groups.setdefault((p.get("c"), p.get("s")), []).append(poly)
+        n_in += 1
+
+    out = []
+    for (cls, surf), polys in sorted(groups.items(), key=lambda kv: str(kv[0])):
+        merged = unary_union(polys).simplify(SIMPLIFY_M, preserve_topology=True)
+        if merged.is_empty:
+            continue
+        props = {"k": "roadarea", "s": surf or "asphalt"}
+        if cls:
+            props["c"] = cls
+        out.append({"type": "Feature", "properties": props,
+                    "geometry": _map(_tf(to_deg, merged))})
+    print("  roadarea: %d ways -> %d merged surfaces "
+          "(far left as line: %d, elevated left to highways.js: %d)"
+          % (n_in, len(out), n_skip_far, n_skip_elev))
+    return out
+
+
 def main():
     refresh = "--refresh" in sys.argv
 
@@ -225,7 +329,17 @@ def main():
     # plaza inside a large park has to come AFTER the park or the park paints
     # over it. Sorting by descending magnitude is the whole fix and it is one
     # line; without it Klyde Warren's paving disappears under its own lawn.
+    #
+    # Only the AREA features are sorted. The road surfaces appended below are
+    # deliberately left at the end and in their own order: js/ground.js draws
+    # them from separate layers (ROAD_CASE / ROAD / CLOSE_ROAD) that filter on
+    # k=='roadarea', so their position among the k=='area' features never
+    # decides what paints over what — the layer order does. Sorting them in by
+    # size would only put a motorway behind a car park in the feature list and
+    # change nothing on screen.
     feats.sort(key=lambda f: -abs(signed_area(f["geometry"]["coordinates"][0])))
+
+    feats.extend(widen_roads())
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
@@ -235,6 +349,8 @@ def main():
     print("wrote data/ground.geojson  %d surfaces  (%d KB)" % (len(feats), kb))
     print("  " + ", ".join("%s=%d" % kv for kv in kinds.most_common()))
     print("  %d elements had no surface this renderer can paint (dropped)" % skipped)
+    ra = sum(1 for f in feats if f["properties"]["k"] == "roadarea")
+    print("  %d road surfaces (js/ground.js ROAD_CASE / ROAD / CLOSE_ROAD)" % ra)
 
 
 if __name__ == "__main__":
