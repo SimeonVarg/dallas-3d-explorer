@@ -1,0 +1,515 @@
+{
+ "_generated_by": "scripts/make_hero_designs.py",
+ "_note": "Do not hand-edit. Edit the script; the derivation is the point.",
+ "buildings": {
+  "Bank of America Plaza": {
+   "wall": "#39443f",
+   "trim": "#8d9992",
+   "roof": "#2b332f",
+   "night_window": "#7fe6a8",
+   "edge_light": "#39ff9e",
+   "confidence": "known",
+   "notes": "Dark green-tinted curtain wall in a silver aluminium grid. The identity of this building is the continuous GREEN ARGON TUBE running every vertical corner \u2014 two miles of it \u2014 which is why edge_light is a separate key from night_window: the outline is not lit windows and must not dim with them."
+  },
+  "Renaissance Tower": {
+   "wall": "#2f343a",
+   "trim": "#e2e6e9",
+   "roof": "#24282d",
+   "night_window": "#ffd98a",
+   "edge_light": "#f2f6ff",
+   "confidence": "known",
+   "notes": "Near-black tinted glass. The white X-BRACES across the upper shaft and the four lit twin masts above the roof are the silhouette; trim is the brace white, measured off an overcast frame so it is not a specular highlight."
+  },
+  "Comerica Bank Tower": {
+   "wall": "#d7d2c6",
+   "trim": "#e9e5da",
+   "roof": "#b3ada0",
+   "night_window": "#f6dfa6",
+   "confidence": "good",
+   "notes": "Pale warm granite \u2014 the one LIGHT tower in a cluster of dark ones, which is most of why it reads at distance. Topped by a barrel vault; the vault is geometry, handled in the hero mesh."
+  },
+  "Chase Tower": {
+   "wall": "#8d9aa3",
+   "trim": "#b6c0c7",
+   "roof": "#6b757c",
+   "night_window": "#eae6cc",
+   "confidence": "good",
+   "notes": "Silver-grey reflective glass on a curved plan. The 22 m hole through the crown is real and is NOT modelled in this pass."
+  },
+  "Fountain Place": {
+   "wall": "#47605c",
+   "trim": "#6d8783",
+   "roof": "#354946",
+   "night_window": "#bfe8d8",
+   "confidence": "known",
+   "notes": "I. M. Pei / Henry Cobb's green-tinted prism. Value taken from a shaded face: every sunlit photograph of this building samples sky and comes back cyan."
+  },
+  "Reunion Tower": {
+   "wall": "#b9b5ac",
+   "trim": "#cfcbc2",
+   "roof": "#9a968d",
+   "night_window": "#ffe3a0",
+   "edge_light": "#ff8c42",
+   "confidence": "known",
+   "notes": "Board-formed concrete shaft, pale warm grey. The ball is a geodesic lattice of 260 lamps that colour-cycle at night \u2014 edge_light is their warm default, not a fixed colour."
+  },
+  "Trammell Crow Center": {
+   "wall": "#cbc5b6",
+   "trim": "#ded9cc",
+   "roof": "#9d978a",
+   "night_window": "#f4e0ad",
+   "confidence": "good",
+   "notes": "Light granite with a glass-pyramid crown and cast-stone finials."
+  },
+  "Santander Tower": {
+   "wall": "#8a7350",
+   "trim": "#a89066",
+   "roof": "#6b593d",
+   "night_window": "#ffd98f",
+   "confidence": "good",
+   "notes": "Bronze-gold reflective glass \u2014 the former Thanksgiving Tower. One of only two warm-metal towers in the box."
+  },
+  "Energy Plaza": {
+   "wall": "#3c4046",
+   "trim": "#666c74",
+   "roof": "#2e3237",
+   "night_window": "#e8e2c4",
+   "confidence": "inferred",
+   "notes": "Dark glass on I. M. Pei's chamfered plan. Family is firm, the exact value is a judgement from low-resolution frames."
+  },
+  "1700 Pacific Avenue": {
+   "wall": "#9d9384",
+   "trim": "#b5ac9e",
+   "roof": "#7a7266",
+   "night_window": "#f0dcaa",
+   "confidence": "inferred",
+   "notes": "Arrives unnamed from Overture; see scripts/hero_overrides.json."
+  },
+  "Ross Tower": {
+   "wall": "#c3bdb0",
+   "trim": "#d6d1c6",
+   "roof": "#948e83",
+   "night_window": "#f2dfae",
+   "confidence": "inferred"
+  },
+  "Sheraton Dallas": {
+   "wall": "#6f7a83",
+   "trim": "#8d979f",
+   "roof": "#555e65",
+   "night_window": "#ffe0a4",
+   "confidence": "inferred"
+  },
+  "Omni Dallas Hotel": {
+   "wall": "#4a5560",
+   "trim": "#74808b",
+   "roof": "#39424b",
+   "night_window": "#cfe6ff",
+   "edge_light": "#4fa8ff",
+   "confidence": "good",
+   "notes": "The whole west face is an addressable LED array that runs colour programmes nightly. edge_light is its most common blue."
+  },
+  "The National Residences": {
+   "wall": "#b6ada0",
+   "trim": "#cdc5b9",
+   "roof": "#8a8377",
+   "night_window": "#ffdfa2",
+   "confidence": "inferred",
+   "notes": "The former First National Bank tower, white marble spandrels."
+  },
+  "Bryan Tower": {
+   "wall": "#5f5a4e",
+   "trim": "#847e70",
+   "roof": "#494539",
+   "night_window": "#f0d79a",
+   "confidence": "inferred",
+   "notes": "Dark bronze glass and bronze mullions."
+  }
+ },
+ "classes": {
+  "commercial": {
+   "palettes": [
+    {
+     "wall": "#c0c7c9",
+     "trim": "#d1d7d9",
+     "roof": "#7d8587"
+    },
+    {
+     "wall": "#838e91",
+     "trim": "#96a1a3",
+     "roof": "#474d4e"
+    },
+    {
+     "wall": "#a8b6b9",
+     "trim": "#bbc7ca",
+     "roof": "#57686c"
+    }
+   ],
+   "night_window": "#f0cf92"
+  },
+  "office": {
+   "palettes": [
+    {
+     "wall": "#abb0b3",
+     "trim": "#c2c6c9",
+     "roof": "#767c7f"
+    },
+    {
+     "wall": "#8ea1a2",
+     "trim": "#a1b3b3",
+     "roof": "#565d5e"
+    },
+    {
+     "wall": "#a0a4a4",
+     "trim": "#b2b6b6",
+     "roof": "#676a6a"
+    }
+   ],
+   "night_window": "#e3e4d2"
+  },
+  "hotel": {
+   "palettes": [
+    {
+     "wall": "#bbc8c3",
+     "trim": "#ced9d5",
+     "roof": "#707b77"
+    },
+    {
+     "wall": "#7b9a8f",
+     "trim": "#90ada3",
+     "roof": "#475953"
+    }
+   ],
+   "night_window": "#f2d79b"
+  },
+  "apartments": {
+   "palettes": [
+    {
+     "wall": "#d6c7ab",
+     "trim": "#e4d8c1",
+     "roof": "#8f8272"
+    },
+    {
+     "wall": "#b3aea4",
+     "trim": "#c6c2b9",
+     "roof": "#6f6b62"
+    },
+    {
+     "wall": "#a3705a",
+     "trim": "#bf9377",
+     "roof": "#6e5648"
+    },
+    {
+     "wall": "#93a3ad",
+     "trim": "#adbac2",
+     "roof": "#5f6c74"
+    }
+   ],
+   "night_window": "#efd6a0"
+  },
+  "retail": {
+   "palettes": [
+    {
+     "wall": "#d8cdb8",
+     "trim": "#e5dcca",
+     "roof": "#8f5b45"
+    },
+    {
+     "wall": "#c1b6a6",
+     "trim": "#d1c8ba",
+     "roof": "#6f6a60"
+    },
+    {
+     "wall": "#b7a68e",
+     "trim": "#c9baa5",
+     "roof": "#7c6a55"
+    }
+   ],
+   "night_window": "#f0d9a4"
+  },
+  "parking": {
+   "palettes": [
+    {
+     "wall": "#b3b0a9",
+     "trim": "#c2bfb9",
+     "roof": "#8a8781"
+    },
+    {
+     "wall": "#a5a29b",
+     "trim": "#b5b2ac",
+     "roof": "#7c7973"
+    },
+    {
+     "wall": "#bdbab2",
+     "trim": "#ccc9c2",
+     "roof": "#93908a"
+    }
+   ],
+   "night_window": "#ded9c8"
+  },
+  "church": {
+   "palettes": [
+    {
+     "wall": "#ded3bc",
+     "trim": "#ebe2d0",
+     "roof": "#6d6a70"
+    },
+    {
+     "wall": "#96604c",
+     "trim": "#b28066",
+     "roof": "#55483f"
+    }
+   ],
+   "night_window": "#f0d69c"
+  },
+  "civic": {
+   "palettes": [
+    {
+     "wall": "#d3cdbe",
+     "trim": "#e2ddd1",
+     "roof": "#7a746a"
+    },
+    {
+     "wall": "#c4beb0",
+     "trim": "#d4cfc3",
+     "roof": "#6c675e"
+    }
+   ],
+   "night_window": "#eddfae"
+  },
+  "industrial": {
+   "palettes": [
+    {
+     "wall": "#a8a49b",
+     "trim": "#b8b4ac",
+     "roof": "#78746c"
+    },
+    {
+     "wall": "#96917f",
+     "trim": "#a8a493",
+     "roof": "#6a665b"
+    }
+   ],
+   "night_window": "#d9d3bb"
+  },
+  "house": {
+   "palettes": [
+    {
+     "wall": "#c9b79c",
+     "trim": "#dbcbb4",
+     "roof": "#8a5a44"
+    },
+    {
+     "wall": "#b09580",
+     "trim": "#c6ae9b",
+     "roof": "#75503e"
+    }
+   ],
+   "night_window": "#f4dca8"
+  },
+  "default": {
+   "palettes": [
+    {
+     "wall": "#bdb6a8",
+     "trim": "#cec8bc",
+     "roof": "#7d776c"
+    },
+    {
+     "wall": "#aba498",
+     "trim": "#bcb6ab",
+     "roof": "#6f6a60"
+    }
+   ],
+   "night_window": "#e8dcbc"
+  },
+  "residential": {
+   "palettes": [
+    {
+     "wall": "#d6c7ab",
+     "trim": "#e4d8c1",
+     "roof": "#8f8272"
+    },
+    {
+     "wall": "#b3aea4",
+     "trim": "#c6c2b9",
+     "roof": "#6f6b62"
+    },
+    {
+     "wall": "#a3705a",
+     "trim": "#bf9377",
+     "roof": "#6e5648"
+    },
+    {
+     "wall": "#93a3ad",
+     "trim": "#adbac2",
+     "roof": "#5f6c74"
+    }
+   ],
+   "night_window": "#efd6a0"
+  },
+  "detached": {
+   "palettes": [
+    {
+     "wall": "#c9b79c",
+     "trim": "#dbcbb4",
+     "roof": "#8a5a44"
+    },
+    {
+     "wall": "#b09580",
+     "trim": "#c6ae9b",
+     "roof": "#75503e"
+    }
+   ],
+   "night_window": "#f4dca8"
+  },
+  "apartment": {
+   "palettes": [
+    {
+     "wall": "#d6c7ab",
+     "trim": "#e4d8c1",
+     "roof": "#8f8272"
+    },
+    {
+     "wall": "#b3aea4",
+     "trim": "#c6c2b9",
+     "roof": "#6f6b62"
+    },
+    {
+     "wall": "#a3705a",
+     "trim": "#bf9377",
+     "roof": "#6e5648"
+    },
+    {
+     "wall": "#93a3ad",
+     "trim": "#adbac2",
+     "roof": "#5f6c74"
+    }
+   ],
+   "night_window": "#efd6a0"
+  },
+  "school": {
+   "palettes": [
+    {
+     "wall": "#d3cdbe",
+     "trim": "#e2ddd1",
+     "roof": "#7a746a"
+    },
+    {
+     "wall": "#c4beb0",
+     "trim": "#d4cfc3",
+     "roof": "#6c675e"
+    }
+   ],
+   "night_window": "#eddfae"
+  },
+  "hospital": {
+   "palettes": [
+    {
+     "wall": "#d3cdbe",
+     "trim": "#e2ddd1",
+     "roof": "#7a746a"
+    },
+    {
+     "wall": "#c4beb0",
+     "trim": "#d4cfc3",
+     "roof": "#6c675e"
+    }
+   ],
+   "night_window": "#eddfae"
+  },
+  "public": {
+   "palettes": [
+    {
+     "wall": "#d3cdbe",
+     "trim": "#e2ddd1",
+     "roof": "#7a746a"
+    },
+    {
+     "wall": "#c4beb0",
+     "trim": "#d4cfc3",
+     "roof": "#6c675e"
+    }
+   ],
+   "night_window": "#eddfae"
+  },
+  "service": {
+   "palettes": [
+    {
+     "wall": "#a8a49b",
+     "trim": "#b8b4ac",
+     "roof": "#78746c"
+    },
+    {
+     "wall": "#96917f",
+     "trim": "#a8a493",
+     "roof": "#6a665b"
+    }
+   ],
+   "night_window": "#d9d3bb"
+  },
+  "warehouse": {
+   "palettes": [
+    {
+     "wall": "#a8a49b",
+     "trim": "#b8b4ac",
+     "roof": "#78746c"
+    },
+    {
+     "wall": "#96917f",
+     "trim": "#a8a493",
+     "roof": "#6a665b"
+    }
+   ],
+   "night_window": "#d9d3bb"
+  },
+  "transportation": {
+   "palettes": [
+    {
+     "wall": "#a8a49b",
+     "trim": "#b8b4ac",
+     "roof": "#78746c"
+    },
+    {
+     "wall": "#96917f",
+     "trim": "#a8a493",
+     "roof": "#6a665b"
+    }
+   ],
+   "night_window": "#d9d3bb"
+  },
+  "roof": {
+   "palettes": [
+    {
+     "wall": "#b3b0a9",
+     "trim": "#c2bfb9",
+     "roof": "#8a8781"
+    },
+    {
+     "wall": "#a5a29b",
+     "trim": "#b5b2ac",
+     "roof": "#7c7973"
+    },
+    {
+     "wall": "#bdbab2",
+     "trim": "#ccc9c2",
+     "roof": "#93908a"
+    }
+   ],
+   "night_window": "#ded9c8"
+  },
+  "shed": {
+   "palettes": [
+    {
+     "wall": "#a8a49b",
+     "trim": "#b8b4ac",
+     "roof": "#78746c"
+    },
+    {
+     "wall": "#96917f",
+     "trim": "#a8a493",
+     "roof": "#6a665b"
+    }
+   ],
+   "night_window": "#d9d3bb"
+  }
+ }
+}

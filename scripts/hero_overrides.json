@@ -1,0 +1,50 @@
+[
+  {
+    "match_name": "Comerica Bank",
+    "display_name": "Comerica Bank Tower",
+    "height": 240.0,
+    "note": "Overture carries the operator name, not the building name. 787 ft / 60 floors; its own height of 239.9 m is already right, so this entry is a LABEL fix, not a height fix."
+  },
+  {
+    "match_name": "Reunion Tower",
+    "display_name": "Reunion Tower",
+    "height": 171.9,
+    "note": "561 ft to the top of the geodesic ball. Overture's 170.0 m is the shaft-plus-ball read off LiDAR and is 1.9 m short. The number barely matters here because js/heroes-dallas.js replaces this volume outright - a footprint extrusion cannot be a ball on a stick - but the enriched height is what the LABEL is ranked by, so it should still be the real one."
+  },
+  {
+    "match_name": "Bank of America Plaza",
+    "display_name": "Bank of America Plaza",
+    "height": 280.7,
+    "note": "921 ft / 72 floors, tallest in Dallas. Overture already agrees to 0.0 m; pinned here so a future Overture release cannot quietly move the one building the whole skyline is composed around."
+  },
+  {
+    "match_name": "Renaissance Tower",
+    "display_name": "Renaissance Tower",
+    "height": 270.0,
+    "note": "The ROOF is 230 m (755 ft); 270 m is the top of the twin masts. Overture's 270.0 is therefore a mast height, not a roof height, and that is the number this scene wants - the masts and the X-braced crown are the entire reason the building is recognisable. js/heroes-dallas.js draws the shaft to 230 m and the masts above it, so the extrusion must NOT also be 270 or the crown floats on a 40 m block of nothing."
+  },
+  {
+    "match_name": "Fountain Place",
+    "display_name": "Fountain Place",
+    "height": 219.5,
+    "note": "720 ft / 60 floors. I. M. Pei / Henry Cobb's cut prism. The footprint in the data is the square base, so the height is right and the SHAPE is what is wrong - handled in js/heroes-dallas.js, not here."
+  },
+  {
+    "match_name": "Chase Tower",
+    "display_name": "Chase Tower",
+    "height": 225.0,
+    "note": "738 ft / 55 floors. The hole through the crown is real geometry, not a texture; left automatic in this pass and listed here so the next pass knows it was a choice, not an oversight."
+  },
+  {
+    "match_name": "1700 Pacific",
+    "display_name": "1700 Pacific Avenue",
+    "height": 199.7,
+    "note": "655 ft / 49 floors. Arrives UNNAMED from Overture at -96.79633, 32.78237 - directly north of Comerica Bank Tower. This entry only fires if Overpass supplies the name; if the tower still renders unlabelled, that is why."
+  },
+  {
+    "match_name": "Thanksgiving Tower",
+    "display_name": "Santander Tower",
+    "height": 197.0,
+    "note": "Alias. Renamed from Thanksgiving Tower in 2018; OSM and Overture disagree about which name is current, so both resolve to the same building."
+  }
+]

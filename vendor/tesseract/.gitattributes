@@ -1,0 +1,7 @@
+# Vendored third-party build output. Nothing here is ever edited by hand, so
+# take it byte for byte: `-text` keeps `core.autocrlf=true` away from the two
+# minified JS files, and `binary` keeps a diff from trying to render 2.8 MB of
+# WebAssembly (or a gzip stream) as lines.
+*        -text
+*.wasm   binary
+*.gz     binary

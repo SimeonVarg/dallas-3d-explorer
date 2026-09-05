@@ -1,0 +1,8 @@
+# Build caches. Every one of these is re-fetchable by a script in scripts/, and
+# together they are 12 MB of Overpass responses that would otherwise be
+# committed and then go stale.
+data/osm_cache/
+__pycache__/
+*.pyc
+.vercel/
+.DS_Store

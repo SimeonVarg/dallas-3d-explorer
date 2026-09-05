@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <script>/* ?clip=1 = cinematic capture: scene only, no chrome (style.css .clip rules).
+       ?clip=1&drive=1 additionally keeps the joystick and BOOST, because a
+       phone has no WASD and ?clip=1 alone gives it a frame it cannot walk in
+       (QUEUE Y10 item 5). Opt-in on purpose: ?clip=1 by itself is unchanged. */
+    (function(){ var q = new URLSearchParams(location.search);
+      var tl = q.get('timelapse') === '1';
+      var ap = q.get('autopilot') === '1';     // SHOT A: self-flying, joystick visible
+      var sd = q.get('sliderdemo') === '1';    // SHOT B: parked, slider drives itself
+      if (q.get('clip') !== '1' && !tl && !ap && !sd) return;
+      document.documentElement.classList.add('clip');
+      if (tl) document.documentElement.classList.add('timelapse');
+      if (ap) document.documentElement.classList.add('autopilot', 'clip-drive');
+      if (sd) document.documentElement.classList.add('sliderdemo');
+      if (q.get('drive') === '1') document.documentElement.classList.add('clip-drive'); })();</script>
+  <title>Dallas 3D Explorer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23140c04'/%3E%3Crect x='5' y='15' width='7' height='12' fill='%23c9a06a'/%3E%3Crect x='13' y='6' width='7' height='21' fill='%23f5a623'/%3E%3Crect x='21' y='12' width='6' height='15' fill='%23b5522e'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <!-- Teaches MapLibre the pmtiles:// scheme. Must load before js/tiles.js
+       registers the protocol, and both must run before app.js builds the map. -->
+  <script src="https://unpkg.com/pmtiles@3.0.6/dist/pmtiles.js"></script>
+  <script src="js/tiles.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="veil" aria-hidden="true">
+    <div id="veil-mark">
+      <svg viewBox="0 0 32 32" width="46" height="46" aria-hidden="true"><rect x="5" y="15" width="7" height="12" fill="#c9a06a"/><rect x="13" y="6" width="7" height="21" fill="#f5a623"/><rect x="21" y="12" width="6" height="15" fill="#b5522e"/></svg>
+      <div id="veil-title">Dallas 3D Explorer</div>
+    </div>
+  </div>
+  <div id="map"></div>
+  <div id="sky"></div>
+  <div id="vignette"></div>
+  <div id="hud">
+    <div id="hud-title">Dallas 3D Explorer</div>
+    <div id="hud-snapshot"></div>
+  </div>
+  <div id="controls-hint">
+    <span class="desktop-hint">WASD move &nbsp;|&nbsp; drag to look &nbsp;|&nbsp; Q/E or wheel for altitude &nbsp;|&nbsp; Shift boost &nbsp;|&nbsp; R reset &nbsp;|&nbsp; P photo &nbsp;|&nbsp; T tour</span>
+    <span class="mobile-hint">Joystick to move &nbsp;|&nbsp; BOOST to sprint &nbsp;|&nbsp; swipe to look &nbsp;|&nbsp; two fingers for altitude</span>
+  </div>
+
+  <div id="debug-panel" class="hidden">
+    <label class="toggle-label">
+      <input type="checkbox" id="debug-toggle" />
+      Color by height source
+    </label>
+    <div id="debug-legend" class="hidden">
+      <span class="legend-dot" style="background:#4CAF50"></span> LiDAR
+      <span class="legend-dot" style="background:#FF9800"></span> Estimated
+      <span class="legend-dot" style="background:#9C27B0"></span> Override
+    </div>
+  </div>
+  <div id="joystick-zone">
+    <div id="joystick-base"><div id="joystick-knob"></div></div>
+  </div>
+  <!-- Time of day. The sun and moon were emoji, which render as a different
+       picture on every platform and sat at a different weight from every other
+       mark in the app; these are drawn marks that inherit their colour from the
+       stylesheet. The slider itself is a custom track whose gradient IS the day
+       (top) to night (bottom) ramp, so its position reads as a time without a
+       label. KEEP IN SYNC WITH _harness.html. -->
+  <div id="tod-panel">
+    <span id="tod-sun" class="tod-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.2v2.7M12 19.1v2.7M2.2 12h2.7M19.1 12h2.7M5.05 5.05l1.9 1.9M17.05 17.05l1.9 1.9M18.95 5.05l-1.9 1.9M6.95 17.05l-1.9 1.9"/></svg></span>
+    <div id="tod-slider-wrap">
+      <input id="tod-slider" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Time of day" />
+    </div>
+    <span id="tod-moon" class="tod-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M20.8 14.1A8.6 8.6 0 0 1 9.9 3.2a8.9 8.9 0 1 0 10.9 10.9z"/></svg></span>
+    <!-- Text glyph, deliberately: js/timeofday.js swaps this button's
+         textContent between ▶ and ❚❚ to show the auto-cycle state, so any
+         markup inside it would be wiped on the first press. -->
+    <button id="tod-play" title="Play the day/night cycle" aria-label="Play the day/night cycle">▶</button>
+  </div>
+  <!-- First, and before anything that can block: it owns the load screen. -->
+  <script src="js/loader.js"></script>
+  <script src="js/graphics.js"></script>
+  <script src="js/sky.js"></script>
+  <script src="js/pattern-lowpass.js"></script>
+  <script src="js/facades.js"></script>
+  <script src="js/ground.js"></script>
+  <script src="js/props.js"></script>
+  <!-- Both of these self-boot once loaded; app.js never calls them. Without
+       these two lines the modules simply never run, and because _harness.html
+       already had js/outer.js, the VERIFICATION HARNESS rendered the outer ring
+       while the live site did not — the exact divergence _harness.html's own
+       comment warns about. js/roofs.js was in neither file, so the roofscape's
+       12,058 features were dead weight on both. Load after facades.js: outer.js
+       waits on quantiseOuterFacades before it will add its layers. -->
+  <script src="js/roofs.js"></script>
+  <script src="js/outer.js"></script>
+  <!-- The five parallel building passes (docs/FIVE_BUILDING_PASSES.md). These tags are
+       committed AHEAD of the code so that no pass has to edit this file — six sessions
+       editing one script list is a guaranteed conflict, and the opposite failure is the
+       one three lines above. Each file is an empty IIFE until its pass lands. Loaded
+       after facades.js and outer.js for the same reason outer.js is: they self-boot and
+       wait on the facade atlas. KEEP IN SYNC WITH _harness.html. -->
+  <!-- Campus heroes (QUEUE F4): EER, the Gates Dell Complex and the Norman
+       Hackerman Building, all three of which arrive at a floor count times a
+       2.8 m residential storey. Self-booting like arts.js; KEEP IN SYNC WITH
+       _harness.html. -->
+  <!-- Storefronts pass (docs/FOUR_MORE_PASSES.md), tag committed ahead of the code. -->
+  <!-- Dallas-only. heroes-dallas.js replaces five data-extruded boxes with
+       hand-massed volumes; highways.js builds the elevated deck network.
+       Both must load AFTER outer.js (they read its palette) and BEFORE
+       places.js, which labels what they build. -->
+  <script src="js/heroes-dallas.js"></script>
+  <script src="js/highways.js"></script>
+  <script src="js/places.js"></script>
+  <!-- Entrances (docs/entrances/*.md, scripts/bake_entrances.py). Self-booting
+       off window.__map like places.js; app.js never calls it. Loaded after the
+       building passes because it waits on `buildings-3d` before it adds its
+       layers — a door standing proud of a wall that does not exist yet is
+       invisible from every angle except straight down. KEEP IN SYNC WITH
+       _harness.html. -->
+  <script src="js/shadows.js"></script>
+  <script src="js/timeofday.js"></script>
+  <script src="js/signs.js"></script>
+  <script src="js/night.js"></script>
+  <!-- The recommendations box's delivery path (QUEUE I4). js/graphics.js
+       builds the box; this makes Send actually deliver (mail-app handoff)
+       while no form-service endpoint is configured there. Self-booting; it
+       polls for the panel, so position in this list does not matter. KEEP IN
+       SYNC WITH _harness.html. -->
+  <script src="js/feedback.js"></script>
+  <!-- Render distance (docs: js/lod.js header). Self-booting; needs the tag in
+       BOTH files or the harness measures a scene the site does not serve. -->
+  <script src="js/lod.js"></script>
+  <!-- ────────────────────────────────────────────────────────────────────────
+       WHAT WE TELL A STUDENT ABOUT THEIR OWN SCHEDULE, AND WHERE TO EDIT IT.
+
+       A class schedule is where one named person is, hour by hour, for four
+       months. The import feature keeps it in this browser's localStorage and
+       sends it nowhere — js/wayfind.js §12 enforces that at runtime and
+       docs/si-privacy.md is the audit that proves it against real network
+       traffic. These are the words that say so.
+
+       They live here, not in the JS, so the wording is a one-line edit in HTML
+       (CLAUDE.md rule 11). js/wayfind.js carries the SAME strings as its
+       defaults, because _harness.html has no <template> and must still say the
+       same thing; the audit asserts the two have not drifted apart. Change a
+       line here and change the matching line in SCHEDULE_PRIVACY_COPY, or the
+       audit goes red on purpose.
+
+       NOT a <script src>, so harness-drift.mjs is unaffected.
+       ──────────────────────────────────────────────────────────────────────── -->
+  <template id="wf-privacy-copy">
+    <span data-k="line">Your schedule stays on this device — saved in this browser only, never uploaded anywhere, and Delete wipes it for good.</span>
+    <span data-k="deleteBtn">Delete my schedule</span>
+    <span data-k="deleted">Deleted. Nothing of it is left in this browser.</span>
+    <span data-k="empty">No schedule saved on this device yet.</span>
+    <span data-k="confirm">Delete it? This cannot be undone.</span>
+  </template>
+  <!-- Walk to class (docs/walk/*.md). Self-booting off window.__map like
+       places.js; app.js never calls it. It RETURNS ON LINE ONE unless the
+       feature was asked for by URL (?walk=1, ?from=, ?to=) or WAYFIND.on is
+       flipped, so with the feature off it adds no element, no source, no layer
+       and no fetch — main stays byte-identical for the AWS recording. Loaded
+       after controls.js so the `/` key handler is installed over a controls
+       stack that is already listening. KEEP IN SYNC WITH _harness.html. -->
+  <script src="js/controls.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

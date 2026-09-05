@@ -1,0 +1,2145 @@
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#1a1208}
+#map{position:absolute;inset:0}
+
+/* ── First paint: an authored dark hold instead of a white void ───────
+   The basemap paints a pale plain long before our scene exists — the first
+   ~2.7 s used to be chrome floating on a near-white void. The veil holds the
+   brand dark until the first fully-built frame (map idle, capped by
+   INTRO.maxVeilMs in app.js), then lifts as the intro flight departs. */
+#veil{position:absolute;inset:0;z-index:60;background:#140c04;display:flex;align-items:center;justify-content:center;
+  transition:opacity 1.15s ease;pointer-events:none}
+#veil.lift{opacity:0}
+#veil-mark{display:flex;flex-direction:column;align-items:center;gap:15px;animation:veil-in 1.2s ease}
+#veil-mark svg{filter:drop-shadow(0 6px 22px rgba(245,166,35,.28))}
+#veil-title{font-size:12px;font-weight:600;letter-spacing:.34em;padding-left:.34em;text-transform:uppercase;
+  color:#f5dfa0;opacity:.85}
+@keyframes veil-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ── The load screen: a skyline that lights up as the city is built ───
+   EVERY MOVING THING HERE IS A COMPOSITOR PROPERTY — transform or opacity —
+   and that is not a style preference, it is the whole design constraint. The
+   wait is ~20 s and almost none of it is network: all 44 requests and 2.2 MB
+   land by 2.5 s, and the rest is the main thread flat out parsing ~22 MB of
+   GeoJSON and tiling 12,000 trees, 7,625 outer buildings and 12,058 roof
+   features. Animate on that thread and the screen freezes solid for seconds at
+   a time, which reads as a crashed page — worse than showing nothing. Anything
+   using width, height, top or filter transitions belongs nowhere near this
+   block. See js/loader.js. */
+/* Stacked, not absolutely positioned. The first cut floated the footer at
+   bottom:0 over a skyline that also sat at the bottom, so the title and the
+   progress rail printed straight across the buildings.
+
+   CENTRED, not bottom-aligned. Measured off the shipped screen at 1600x1000:
+   the skyline's base sat 83% of the way down and everything above it was empty
+   brown — over half the frame carrying nothing. Centring the whole assembly
+   (skyline + ground line + title block) puts the same content in the middle of
+   the frame with matched margins, and the credit line takes the foot. */
+#veil-load{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;overflow:hidden}
+#vl-stack{position:relative;display:flex;flex-direction:column;align-items:center;width:100%}
+
+/* Sunrise behind the skyline. Breathes on transform+opacity only. Anchored so
+   its centre lands on the ground line, wherever the centred stack puts it. */
+#vl-glow{position:absolute;left:50%;bottom:44%;width:150vmax;height:150vmax;transform:translate(-50%,50%);
+  background:radial-gradient(circle at 50% 50%,rgba(245,166,35,.30) 0%,rgba(181,82,46,.16) 26%,
+    rgba(181,82,46,0) 58%);animation:vl-breathe 7.5s ease-in-out infinite;pointer-events:none}
+@keyframes vl-breathe{0%,100%{opacity:.72;transform:translate(-50%,50%) scale(1)}
+  50%{opacity:1;transform:translate(-50%,50%) scale(1.07)}}
+/* A static top-and-bottom fall-off so the empty frame reads as a deliberate
+   letterbox rather than as unused space. No animation — it never moves. */
+#vl-frame{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(10,6,2,.72) 0%,rgba(10,6,2,0) 26%,
+    rgba(10,6,2,0) 74%,rgba(10,6,2,.66) 100%)}
+
+/* The skyline. One bar per build stage, in the order app.js runs them. */
+#vl-city{position:relative;display:flex;align-items:flex-end;gap:clamp(3px,.9vw,9px);
+  width:min(76vw,800px);height:min(38vh,272px)}
+/* The buildings light in sequence on a CSS stagger — --i * STEP — rather than
+   one per build stage. Measured reason: all 26 stages fire within 276 ms, so
+   stage-driven lighting flashes the whole skyline on at once and then nothing
+   moves for the seven seconds that are the actual wait. A keyframe with a delay
+   is also the only thing that keeps running while the main thread is blocked. */
+.vl-bar{position:relative;flex:1 1 0;height:var(--h);border-radius:3px 3px 0 0;
+  background:linear-gradient(180deg,#2b1a0e 0%,#190f06 100%);
+  transform:scaleY(.86);transform-origin:50% 100%;opacity:.5}
+#veil-load.building .vl-bar{animation:vl-rise .9s cubic-bezier(.16,1,.3,1) both;
+  animation-delay:calc(var(--i) * .42s)}
+@keyframes vl-rise{from{transform:scaleY(.86);opacity:.5}to{transform:scaleY(1);opacity:1}}
+/* The lit face, faded in over the silhouette rather than swapped for it. */
+.vl-bar u{position:absolute;inset:0;border-radius:3px 3px 0 0;opacity:0;
+  background:linear-gradient(180deg,#f5a623 0%,#c9702a 45%,#7d3a1c 100%);
+  box-shadow:0 0 22px rgba(245,166,35,.42),0 0 60px rgba(245,166,35,.18)}
+#veil-load.building .vl-bar u{animation:vl-lit 1s ease both;animation-delay:calc(var(--i) * .42s)}
+@keyframes vl-lit{from{opacity:0}to{opacity:.92}}
+/* Windows come up just behind the face, then shimmer for as long as it takes. */
+.vl-bar s{position:absolute;inset:14% 16% 6%;display:flex;flex-wrap:wrap;align-content:flex-start;
+  gap:11% 16%;opacity:0;text-decoration:none}
+#veil-load.building .vl-bar s{animation:vl-lit 1s ease both,vl-flicker 3.4s ease-in-out infinite;
+  animation-delay:calc(var(--i) * .42s + .16s),calc(var(--i) * .42s + 1.1s)}
+.vl-bar s i{width:42%;height:5%;min-height:2px;background:#ffe6b0;border-radius:1px;opacity:.85}
+
+/* The three landmark silhouettes (js/loader.js SHAPES). Drawn by hand as
+   elevations — the repo's footprints are plans and carry nothing about the
+   Tower's setbacks or the Capitol's dome in the vertical. Percentages are of the
+   bar's own box, y=0 at the top, so each polygon starts at its own skyline.
+   flex-grow is raised because a spire needs width to survive at phone size. */
+.vl-bar[data-shape]{border-radius:0;flex-grow:1.9}
+/* Reunion Tower is the one landmark that is far TALLER than it is wide, and a
+   ball on a stick needs enough width for the ball to still read as round after
+   the flex squeeze. 2.6 rather than the shaped default of 1.9, read off a
+   render at phone width, not reasoned about. */
+.vl-bar[data-shape="reunion"]{flex-grow:2.6}
+.vl-bar[data-shape] s{inset:34% 30% 6%}
+
+/* Reunion Tower: a geodesic ball on a concrete stick. ONE closed loop walked
+   clockwise from the top of the ball, down the right side of the shaft, across
+   the foot, and back up the left — the same discipline the Capitol polygon
+   needed in the Austin repo, and for the same reason: an interleaved point
+   order produces a path the browser silently DROPS, and a dropped clip-path
+   renders as a plain rectangle that looks like a shape nobody styled.
+   The ball is drawn as an octagon rather than a circle because at 40 px wide a
+   circle and an octagon are the same picture, and a polygon cannot fail. */
+.vl-bar[data-shape="reunion"]{clip-path:polygon(
+  50% 0%, 63% 5%, 69% 16%, 63% 27%, 55% 31%, 55% 100%,
+  45% 100%, 45% 31%, 37% 27%, 31% 16%, 37% 5%)}
+
+/* Bank of America Plaza: the tallest building in Dallas. A broad chamfered
+   shaft that steps IN twice near the crown. The steps are the whole silhouette
+   — without them this is a rectangle, and a rectangle is what every other bar
+   in the row already is. */
+.vl-bar[data-shape="boa-plaza"]{clip-path:polygon(
+  38% 0%, 62% 0%, 62% 7%, 70% 7%, 70% 17%, 78% 17%, 78% 100%,
+  22% 100%, 22% 17%, 30% 17%, 30% 7%, 38% 7%)}
+
+/* Renaissance Tower: a dark box under TWIN LIT MASTS. The masts are 40 m of
+   nothing but steel and they are the reason this building is recognisable at
+   night from thirty miles out, so they get a third of the shape's height even
+   though they are a twentieth of its mass. Drawn as two separate spikes off one
+   roofline, walked as a single loop: up the left mast, down its right side,
+   across the roof gap, up the right mast, down, then the shaft. */
+.vl-bar[data-shape="renaissance"]{clip-path:polygon(
+  38% 0%, 43% 0%, 43% 32%, 57% 32%, 57% 0%, 62% 0%, 62% 32%,
+  76% 32%, 76% 100%, 24% 100%, 24% 32%, 38% 32%)}
+
+@keyframes vl-flicker{0%,100%{opacity:.92}42%{opacity:.62}68%{opacity:1}}
+
+/* Ground line the skyline stands on. */
+#vl-ground{position:relative;width:100vw;height:1px;flex:none;
+  background:linear-gradient(90deg,rgba(245,166,35,0),rgba(245,166,35,.55) 22%,
+    rgba(245,166,35,.55) 78%,rgba(245,166,35,0))}
+
+#vl-foot{position:relative;display:flex;flex-direction:column;align-items:center;
+  gap:11px;margin-top:34px;padding:0 20px;animation:veil-in 1s ease}
+/* Title with a hairline running out either side — the cheapest typographic
+   move there is for making a single line of caps read as a title card rather
+   than as a label. */
+#vl-titlerow{display:flex;align-items:center;gap:clamp(10px,2.2vw,20px)}
+.vl-rule{width:clamp(16px,7vw,66px);height:1px;flex:none;
+  background:linear-gradient(90deg,rgba(245,166,35,0),rgba(245,166,35,.55))}
+#vl-titlerow .vl-rule:last-child{background:linear-gradient(90deg,rgba(245,166,35,.55),rgba(245,166,35,0))}
+#vl-title{font-size:clamp(12px,1.5vw,16px);font-weight:600;letter-spacing:.38em;padding-left:.38em;
+  text-transform:uppercase;color:#fbeec4;white-space:nowrap;
+  text-shadow:0 2px 18px rgba(245,166,35,.35)}
+#vl-sub{font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(232,207,154,.5);text-align:center;margin-top:-3px}
+#vl-rail{position:relative;width:min(62vw,330px);height:2px;border-radius:2px;
+  background:rgba(245,223,160,.16);overflow:hidden}
+#vl-fill{position:absolute;inset:0;transform:scaleX(0);transform-origin:0 50%;border-radius:2px;
+  background:linear-gradient(90deg,#b5522e,#f5a623);transition:transform .55s cubic-bezier(.16,1,.3,1)}
+#vl-row{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+  width:min(62vw,330px);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase}
+#vl-status{color:#e8cf9a;opacity:.72}
+#vl-pct{color:#f5a623;opacity:.9;font-variant-numeric:tabular-nums}
+
+/* The credit. Asked for by name; set as a film-style card at the foot of the
+   frame so it reads as authorship rather than as another status line. The role
+   line is uppercase and quiet; the NAME keeps its own capitalisation. */
+#vl-credit{position:absolute;left:0;right:0;bottom:5.5vh;display:flex;flex-direction:column;
+  align-items:center;gap:6px;pointer-events:none;animation:veil-in 1.4s ease both;animation-delay:.3s}
+#vl-credit-role{font-size:8.5px;letter-spacing:.34em;padding-left:.34em;text-transform:uppercase;
+  color:rgba(232,207,154,.34)}
+#vl-credit-name{font-size:13px;letter-spacing:.2em;padding-left:.2em;color:rgba(250,229,178,.86);
+  text-shadow:0 2px 14px rgba(245,166,35,.22)}
+/* The last beat: whatever has not lit yet lights NOW, and the whole skyline
+   flares, so the final frame is a finished city rather than a half-built one. */
+#veil-load.vl-done .vl-bar{animation:none;transform:scaleY(1);opacity:1}
+#veil-load.vl-done .vl-bar u{animation:none;opacity:1}
+#veil-load.vl-done .vl-bar s{animation:vl-flicker 3.4s ease-in-out infinite;opacity:1}
+#veil-load.vl-done #vl-glow{animation:none;opacity:1;transform:translate(-50%,50%) scale(1.16)}
+
+@media (max-width:560px){
+  #vl-city{width:88vw;height:24vh;gap:3px}
+  #vl-rail,#vl-row{width:78vw}
+  #vl-sub{font-size:8.5px;letter-spacing:.12em;max-width:78vw}
+  #vl-credit{bottom:4vh}
+}
+@media (prefers-reduced-motion:reduce){
+  #vl-glow,#veil-load.building .vl-bar,#veil-load.building .vl-bar u,
+  #veil-load.building .vl-bar s,#vl-credit{animation-duration:.01ms;animation-delay:0s}
+  .vl-bar,.vl-bar u,.vl-bar s,#vl-fill{transition-duration:.01ms}
+}
+
+/* ── ?clip=1: cinematic capture — scene only. Attribution stays (license). */
+.clip #hud,.clip #controls-hint,.clip #date-panel,.clip #tod-panel,
+.clip #debug-panel,.clip #diff-banner,.clip #gfx-button,.clip #gfx-panel,.clip #gfx-toast,
+.clip #fb-button,.clip #fb-panel{display:none!important}
+
+/* ── ?timelapse=1 — chrome-free like clip, EXCEPT the time column, which is
+   the point of the shot: the knob has to be seen travelling from sunset to
+   night while the tour flies. The play button inside it is hidden because the
+   flag drives time itself and a ▶ on screen invites a tap that would fight it.
+   Overrides the .clip rule above by specificity (two classes beat one). */
+html.timelapse #tod-panel{display:flex!important}
+
+/* ── ?autopilot=1 (SHOT A) and ?sliderdemo=1 (SHOT B) ────────────────────
+   Both are recording flags: the app performs its own demo with zero touches.
+   They keep exactly the controls the shot is ABOUT and nothing else. The
+   OpenStreetMap credit stays in both — licence, not decoration. */
+html.autopilot #tod-panel,
+html.sliderdemo #tod-panel{display:flex!important}
+html.autopilot #tod-play,
+html.sliderdemo #tod-play{display:none!important}
+html.autopilot #tod-slider,
+html.sliderdemo #tod-slider{pointer-events:none}
+/* the joystick is the subject of shot A, so it must not swallow taps either */
+html.autopilot #joystick-zone{pointer-events:none}
+
+/* SHOT B's knob. The native range thumb cannot be CSS-transitioned, and an
+   rAF-driven thumb would stutter: sweeping the time of day costs ~93% of the
+   frame rate (measured 56.5 -> 4.0 fps with the camera PARKED), so the main
+   thread is blocked in long chunks. A CSS animation runs on the COMPOSITOR
+   thread and is immune to that, so this overlay knob glides at full rate
+   while the sky steps underneath it. The knob is the story; it must not step. */
+html.sliderdemo #tod-slider::-webkit-slider-thumb{opacity:0}
+html.sliderdemo #tod-slider::-moz-range-thumb{opacity:0}
+/* TRANSFORM, NOT `top`. The first version of this animated `top` and it stepped
+   just as badly as the thing it was built to avoid: `top` is a LAYOUT property,
+   so every frame of it has to go through the blocked main thread. Measured on
+   the page's own clock it moved through 14 positions with a 19.9 px jump
+   between two of them. Only `transform` and `opacity` can be handed to the
+   compositor, so the travel is a translateY started from js/app.js (Web
+   Animations API, which keeps the pixel distance in one place next to the
+   duration). `top` is still here, but only to PLACE the knob once. */
+#tl-knob{position:absolute;left:50%;width:22px;height:22px;border-radius:50%;
+  margin-left:-11px;margin-top:-11px;pointer-events:none;z-index:3;
+  will-change:transform;
+  background:radial-gradient(circle at 38% 34%,#fff6df 0%,#ffd489 46%,#f0a93c 100%);
+  box-shadow:0 0 0 2px rgba(20,12,4,.55),0 2px 7px rgba(0,0,0,.45),0 0 14px rgba(255,196,92,.55);
+  top:var(--tl-from,46%);opacity:0;}
+html.sliderdemo #tl-knob{opacity:1;}
+
+html.timelapse #tod-play{display:none!important}
+html.timelapse #tod-slider{pointer-events:none}
+
+/* ── ?clip=1&drive=1 — the drive controls are the one thing a phone cannot
+   record without (QUEUE Y10 item 5) ──────────────────────────────────────
+   `?clip=1` hides #joystick-zone, and #joystick-zone carries BOOST, so on a
+   phone the one mode that gives a clean recording is also the one mode in
+   which you cannot move: a phone has no WASD to fall back on the way the
+   desktop does. Photographed at 393x852 the drive controls are simply gone.
+
+   `?clip=1` ITSELF IS UNCHANGED — same rule, same `display:none!important`,
+   same frame. `drive=1` is an opt-in second flag (index.html adds .clip-drive)
+   that keeps the stick and BOOST and nothing else, so a phone can walk through
+   a shot at the price of two controls in the corner. Opting in is the point:
+   the clean frame stays the default. */
+.clip:not(.clip-drive) #joystick-zone{display:none!important}
+/* Sky overlay (js/sky.js): sun/moon disc, bloom, azimuth-anchored horizon glow,
+   stars and clouds. Everything here uses `mix-blend-mode:screen` so it can only
+   ADD light — a 97 m tower crossing the horizon line picks up bloom instead of
+   being painted over. */
+#sky{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+#sky-canvas{position:absolute;left:0;top:0;pointer-events:none;mix-blend-mode:screen}
+#sky-glow,#sky-bloom,#sky-core{position:absolute;left:0;top:0;pointer-events:none;
+  mix-blend-mode:screen;will-change:transform,opacity;border-radius:50%}
+#sky-core{border-radius:50%}
+
+/* ── Post-process stack (js/graphics.js) ──────────────────────────────
+   The z-order IS the post-processing order. Distance blur reads the raw
+   geometry, so it sits under the sky; bloom has to see the sky and the god
+   rays, so it sits over them; the vignette goes after bloom or the bloom
+   re-lights the corners the vignette just darkened; grain is last, over the lot.
+   Each layer is display:none when its setting is 0 — a zero-opacity
+   full-screen blend layer still costs the compositor a full-screen blend. */
+/* THE HORIZON LINE. Reported as "the horizon line is visible in front of the
+   tower (and any building the horizon line crosses through) it appears in FRONT
+   of that when it should be behind", and separately as "its the point where the
+   blur setting starts blurring, and above doesn't blur".
+
+   Both are this gradient. It began at `#000 0%` — full mask on the very first
+   row — so the distance blur switched from none to maximum across ONE PIXEL,
+   and that hard step is the line. It is a viewport-wide DOM rectangle, so it
+   cannot know what is in front of what: the step reads as a line drawn over the
+   UT Tower rather than behind it, because it is.
+
+   Feathering the top over the first 14% turns the step into a ramp. It does not
+   make the blur depth-aware — a DOM overlay never can, and that is the real
+   fix if this is ever revisited — but it removes the edge, which is the part
+   you can see. */
+#fx-dof{position:absolute;left:0;right:0;top:0;height:0;z-index:2;pointer-events:none;opacity:0;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,.55) 8%,#000 20%,rgba(0,0,0,.82) 40%,rgba(0,0,0,.32) 68%,transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,.55) 8%,#000 20%,rgba(0,0,0,.82) 40%,rgba(0,0,0,.32) 68%,transparent 100%)}
+/* Bloom, god rays and lens flare all composite additively out of this one
+   canvas. It used to be accompanied by a #fx-bloom div doing
+   backdrop-filter + mix-blend-mode:screen; that combination does not screen —
+   Chrome lays the filtered backdrop over the frame instead of adding it, which
+   turned the whole city dark and blurry. See the note in graphics.js. */
+#fx-canvas{position:absolute;left:0;top:0;z-index:6;pointer-events:none;mix-blend-mode:screen;display:none}
+#vignette{position:absolute;inset:0;z-index:7;pointer-events:none;opacity:0;transition:opacity .2s linear;
+  background:radial-gradient(ellipse at center,rgba(0,0,0,0) 54%,rgba(0,0,0,.62) 100%)}
+#fx-grain{position:absolute;inset:0;z-index:8;pointer-events:none;display:none;
+  mix-blend-mode:overlay;background-repeat:repeat}
+
+/* Chrome sits quietly over the scene: thin, low-contrast, and it fades out of
+   the way once you start flying (js/app.js adds .flying to <body>). */
+#hud{position:absolute;top:16px;left:50%;transform:translateX(-50%);
+  background:rgba(18,11,4,.55);backdrop-filter:blur(10px) saturate(1.1);
+  border:1px solid rgba(255,190,90,.16);border-radius:999px;
+  box-shadow:0 6px 24px rgba(0,0,0,.28);
+  padding:7px 20px;color:#f7e6bd;text-align:center;pointer-events:none;z-index:10;
+  transition:opacity .5s ease}
+#hud-title{font-size:12.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase}
+#hud-snapshot{font-size:10px;opacity:.5;margin-top:1px;letter-spacing:.04em}
+
+#controls-hint{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  background:rgba(18,11,4,.5);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,190,90,.12);border-radius:999px;
+  padding:6px 16px;color:rgba(245,223,160,.7);font-size:11.5px;letter-spacing:.02em;
+  pointer-events:none;z-index:10;white-space:nowrap;transition:opacity .5s ease}
+/* controls.js adds .flying after 200ms of genuine camera input and removes it
+   again after 4s idle, so the hint always comes back. */
+body.flying #controls-hint{opacity:0}
+body.flying #hud{opacity:.35}
+
+/* The side panels used to be `pointer-events:none` for the whole of `.flying`,
+   INCLUDING its 4-second idle tail — so after every burst of flying the
+   time-of-day slider was dead for four seconds and the only cure was to wait.
+   The protection it bought is real (on a phone a right-thumb look swipe drags
+   the slider into night), but it only needs to last as long as the swipe:
+   `.input-active` is set on pointerdown and cleared on pointerup. The fade
+   still follows `.flying`, and hover/touch brings the panel straight back so
+   you can always see what you are aiming at. */
+body.flying #tod-panel,body.flying #date-panel{opacity:.45}
+body.input-active #tod-panel,body.input-active #date-panel{pointer-events:none}
+#tod-panel:hover,#date-panel:hover,#tod-panel:focus-within,#date-panel:focus-within{opacity:1!important}
+#tod-panel,#date-panel{transition:opacity .3s ease}
+.mobile-hint{display:none}
+/* Width-based, not (hover/pointer) which mis-detects phones (esp. in Safari
+   "Request Desktop Website" mode) and hid the mobile hint + joystick. */
+@media(max-width:1024px){.desktop-hint{display:none}.mobile-hint{display:inline}}
+
+#debug-panel{position:absolute;top:72px;right:16px;
+  background:rgba(20,12,4,.72);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,180,60,.2);border-radius:10px;
+  padding:10px 14px;color:#f5dfa0;font-size:13px;z-index:10;user-select:none}
+#debug-panel.hidden{display:none}
+.toggle-label{display:flex;align-items:center;gap:8px;cursor:pointer}
+.toggle-label input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:#f5a623}
+#debug-legend{margin-top:8px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+#debug-legend.hidden{display:none}
+.legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+
+/* Visible by default so the movement control can never silently vanish on a
+   phone; hidden only on genuinely wide (desktop) screens that use WASD.
+   `html.has-touch` (set by controls.js from navigator.maxTouchPoints) brings it
+   back on a touch device that is wide anyway — an iPad in landscape is 1366px
+   and would otherwise lose its only translation control. */
+/* ── EVERY TASTE VALUE FOR THE TOUCH DRIVE CONTROLS, IN ONE PLACE ─────
+   The stick, the BOOST button and every panel that has to stay clear of them
+   all read these. Overrule any line here and the whole layout follows
+   (CLAUDE.md rule 11). They live on :root rather than on #joystick-zone
+   because the graphics sheet, the feedback sheet and the wayfind sheet all
+   need --drive-clear, and a custom property declared on #joystick-zone is
+   invisible to a sibling. */
+:root{
+  --joy-left:32px;         /* the stick's inset from ITS edge   */
+  --joy-bottom:70px;
+  --joy-size:100px;        /* stick diameter                    */
+  --boost-size:64px;       /* BOOST: a disc, see the note below */
+  --touch-min:44px;        /* the smallest target a thumb reliably hits
+                              (Apple HIG 44pt; Material 48dp)   */
+  --drive-air:16px;        /* real air between a panel and the controls */
+
+  /* BOOST mirrors the stick instead of orbiting it: same distance in from its
+     own screen edge, same distance up from the floor, so the two thumbs rest
+     at the same height. Two derived values, not two magic numbers — move the
+     stick and BOOST follows it across the screen. */
+  --boost-right:calc(var(--joy-left) + var(--joy-size)/2 - var(--boost-size)/2);
+  --boost-bottom:calc(var(--joy-bottom) + var(--joy-size)/2 - var(--boost-size)/2);
+
+  /* BOOST's palette IS the joystick's palette — see the long note below. */
+  --boost-face:rgba(255,255,255,.08);      /* off: the stick base's own wash */
+  --boost-edge:rgba(255,180,60,.3);        /* off: the stick base's own ring */
+  --boost-edge-w:2px;                      /* off: the stick's ring weight   */
+  --boost-face-on:rgba(245,166,35,.42);    /* on:  the KNOB's amber          */
+  --boost-edge-on:rgba(245,166,35,.9);     /* on:  the knob's own ring       */
+  --boost-ink:#f5dfa0;
+  --boost-ink-on:#fff6e0;
+  --boost-mark:rgba(245,166,35,.95);       /* off: the chevrons ARE the knob */
+  --boost-mark-on:#fff6e0;
+  /* The city under this button is pale limestone by day and near-black by
+     night, and a pale label has to survive both. One shadow, not a second
+     fill — a fill would put the pair back into opposite polarity. */
+  --boost-shadow:0 1px 3px rgba(12,7,2,.75);
+
+  /* The one number every bottom sheet in the app clears the drive controls by.
+     max() rather than a hand-picked constant so that raising EITHER control
+     moves every panel — the old 218px was arithmetic done once, in a comment,
+     against a BOOST button that has since moved to the other side. */
+  --drive-clear:calc(max(var(--joy-bottom) + var(--joy-size),
+                         var(--boost-bottom) + var(--boost-size)) + var(--drive-air));
+}
+
+/* A FULL-WIDTH FRAME THAT CATCHES NOTHING. #joystick-zone used to be a 100px
+   box around the stick, with BOOST absolutely positioned inside it; now it
+   spans the screen so BOOST can sit at the opposite edge and STILL be its
+   child. That matters: every show/hide rule this element already carries —
+   the 1025px desktop cut-off, html.has-touch, and .clip — applies to both
+   controls automatically, and the two cannot drift apart the way the old
+   left:96px/bottom:62px pair did.
+
+   pointer-events:none is what makes a full-width frame safe. The zone itself
+   never listened for anything (js/controls.js binds pointerdown to
+   #joystick-base and to the BOOST button, never to the zone), so it can be
+   transparent to touch and let a look-swipe through the gap between the two
+   controls; the children take their events back with pointer-events:auto. */
+#joystick-zone{display:block;position:absolute;left:0;right:0;bottom:0;height:0;z-index:20}
+@media(min-width:1025px){#joystick-zone{display:none}}
+html.has-touch #joystick-zone{display:block}
+#joystick-base{position:absolute;left:var(--joy-left);bottom:var(--joy-bottom);
+  width:var(--joy-size);height:var(--joy-size);border-radius:50%;
+  background:rgba(255,255,255,.08);border:2px solid rgba(255,180,60,.3);
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:auto;touch-action:none}
+#joystick-knob{width:40px;height:40px;border-radius:50%;
+  background:rgba(245,166,35,.55);border:2px solid rgba(245,166,35,.9);
+  pointer-events:none;transition:transform .05s}
+
+/* ══ BOOST — the touch equivalent of holding Shift (js/controls.js) ═══════════
+   It LATCHES rather than being held, and it lights up while it is on so a
+   suddenly-fast city is never a mystery. Created from JS and appended to
+   #joystick-zone, so that element's show/hide rules carry it.
+
+   "THE BOOST BUTTON IS A BIT OFF VISUALLY." Simeon has said this twice,
+   unprompted, months apart. A pass on 2026-08-16 drove the city by real touch
+   at 1.7 m and measured what he was looking at; this is the third attempt at
+   the button and the first that changes where it is rather than what it wears.
+
+   WHAT WAS MEASURED, at 393x852 with real touch (shots/mobile/final2/before-*):
+
+   1. IT SAT ON THE STICK. The ring is r=50 about (82,732); the button's box
+      was 60x44 at (119.5,650.5) and its nearest corner was 53.0 px from that
+      centre. Three pixels outside a fifty-pixel ring. The previous pass's own
+      --boost-gap of 8px was real but was measured to the corner ARC's centre,
+      so the number in the code and the number your eye reads were different
+      numbers — which is a very good way to write down "8px of air" and ship
+      something that looks welded on.
+   2. IT WAS THE SAME THUMB AS THE STICK. Both controls sat left of centre on
+      a 393px screen. Sprinting meant taking the steering thumb off the wheel.
+   3. IT WAS A RECTANGLE IN A CITY OF DISCS. Every other floating control here
+      is a circle (#gfx-button, #fb-button, #tod-play) or a 999px pill (#hud,
+      #controls-hint, #tod-panel, #gfx-toast). A 12px-radius rounded rectangle
+      welded at 45 degrees to a circle was the only one of its kind, and the
+      clearance around it was 8px at the corner and much more everywhere else.
+      Uneven air around a shape that belongs to no family is exactly what "a
+      bit off" looks like.
+   4. IT WAS DARKER THAN THE CITY OFF AND THE BRIGHTEST THING IN IT ON. Its box
+      read 0.94x the frame median switched off and 1.74x switched on, and its
+      brightest pixel switched on (246.6) WAS the brightest pixel anywhere in
+      the frame (246.6). Meanwhile the stick beside it is a pale wash inside a
+      hairline. Two neighbouring controls in opposite polarity.
+
+   SO: A DISC, MIRRORED, WEARING THE JOYSTICK'S OWN CLOTHES.
+   * A disc of --boost-size, because that is what every other floating control
+     in this app is, and because a circle's clearance from a circle is the same
+     in every direction — there is no corner left to be three pixels wrong.
+   * Mirrored to the opposite edge (--boost-right / --boost-bottom, both derived
+     from the stick), so the left thumb never leaves the stick and the right
+     thumb — which is already the look thumb — taps it. Measured separation
+     goes from 3.0 px to 147 px, and the frame gains a symmetry it did not have.
+   * OFF it wears --boost-face / --boost-edge, which are the joystick base's own
+     wash and ring, at the joystick's own 2px weight. The pair now reads as one
+     set of controls rather than as a light one and a dark one.
+   * ON it wears --boost-face-on / --boost-edge-on, which are the KNOB's amber
+     and the knob's ring: the same system, engaged. The old 0 0 16px outer glow
+     is gone — that halo is what made it the brightest object in the city — and
+     the chevrons still pulse, which is the part that reads as motion rather
+     than as an alarm.
+   The house glass (blur + the dark 18,11,4 fill) is deliberately NOT used here.
+   It belongs to the chrome at the top of the frame; down here it made the
+   button a dark smudge over the ground. Same lesson as the rest of this
+   project — the screenshot decided it, not the token table. */
+#joy-boost{position:absolute;right:var(--boost-right);bottom:var(--boost-bottom);
+  width:var(--boost-size);height:var(--boost-size);border-radius:50%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  background:var(--boost-face);border:var(--boost-edge-w) solid var(--boost-edge);
+  color:var(--boost-ink);cursor:pointer;touch-action:none;pointer-events:auto;
+  -webkit-tap-highlight-color:transparent;user-select:none;
+  transition:background .14s,color .14s,border-color .14s,transform .1s}
+/* THE CHEVRONS ARE THIS BUTTON'S KNOB, and that is the whole reason the pair
+   reads as a pair. Photographed over pale South Mall limestone, a hairline ring
+   with a pale label inside it was the faintest thing on the screen — while the
+   stick beside it, wearing the SAME wash and the SAME ring, read clearly,
+   because it has a 40px amber disc sitting in the middle of it. The ring was
+   never doing the work on either control. So the chevrons go amber (the knob's
+   own colour) and up to 18px: a small amber mark inside a hairline ring, which
+   is the stick's own composition at a quarter of the size. */
+#joy-boost b{font-size:10px;font-weight:700;letter-spacing:.1em;line-height:1;
+  text-shadow:var(--boost-shadow)}
+#joy-boost svg{width:18px;height:18px;margin-bottom:-1px;color:var(--boost-mark);
+  filter:drop-shadow(var(--boost-shadow))}
+#joy-boost:active{transform:scale(.95)}
+#joy-boost.on{background:var(--boost-face-on);border-color:var(--boost-edge-on);
+  color:var(--boost-ink-on)}
+#joy-boost.on svg{color:var(--boost-mark-on)}
+/* Only the chevrons animate, and only while boosting: transform on a 15 px
+   glyph, which the compositor handles and which stops the moment it is off. */
+#joy-boost.on svg{animation:joy-boost-pulse 1.1s ease-in-out infinite}
+@keyframes joy-boost-pulse{0%,100%{transform:translateY(1px);opacity:.75}50%{transform:translateY(-1px);opacity:1}}
+@media (prefers-reduced-motion:reduce){#joy-boost.on svg{animation:none}}
+
+#date-panel{position:absolute;bottom:70px;right:16px;
+  background:rgba(20,12,4,.72);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,180,60,.2);border-radius:10px;
+  padding:8px 12px;color:#f5dfa0;font-size:13px;z-index:10;display:flex;align-items:center;gap:8px}
+#date-panel.hidden{display:none}
+#date-label{font-size:11px;opacity:.65;white-space:nowrap}
+#date-select{background:rgba(40,24,8,.9);border:1px solid rgba(255,180,60,.3);
+  border-radius:6px;color:#f5dfa0;font-size:13px;padding:3px 6px;cursor:pointer;outline:none;max-width:130px}
+#date-select option{background:#1a1208;color:#f5dfa0}
+
+#diff-banner{position:absolute;top:72px;left:16px;
+  background:rgba(20,12,4,.82);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,180,60,.35);border-radius:10px;
+  padding:10px 14px;color:#f5dfa0;font-size:13px;z-index:10;max-width:280px}
+#diff-banner.hidden{display:none}
+#diff-info{display:block;font-size:12px;opacity:.85;margin-bottom:8px;line-height:1.5}
+#diff-controls{display:flex;align-items:center;gap:6px}
+#diff-controls button{background:rgba(245,166,35,.2);border:1px solid rgba(245,166,35,.4);
+  border-radius:6px;color:#f5dfa0;font-size:15px;line-height:1;padding:3px 9px;cursor:pointer;transition:background .15s}
+#diff-controls button:hover{background:rgba(245,166,35,.4)}
+#diff-counter{font-size:12px;opacity:.7;flex:1;text-align:center}
+
+#tod-panel{position:absolute;right:14px;top:50%;transform:translateY(-50%);z-index:10;
+  display:flex;flex-direction:column;align-items:center;gap:9px;
+  background:rgba(18,11,4,.5);backdrop-filter:blur(10px) saturate(1.1);
+  border:1px solid rgba(255,190,90,.16);border-radius:999px;padding:13px 9px;
+  box-shadow:0 6px 24px rgba(0,0,0,.3)}
+/* ── The day/night slider ─────────────────────────────────────────────
+   Reported: "make the day night slider look nicer and replace the sun and moon
+   emoji." Both are fixed here rather than by swapping one picture for another.
+
+   THE EMOJI ARE GONE because an emoji is a different drawing on every platform
+   — Apple's ☀️ is a flat orange disc, Windows' is a yellow face with a nose —
+   and neither matches anything else in this app. The marks are inline SVG in
+   index.html, stroked in `currentColor`, so the sun is set warm and the moon
+   cold from right here.
+
+   THE TRACK IS THE INFORMATION. It used to be the browser's default grey bar
+   with an `accent-color` fill, which said nothing about what the control did.
+   The gradient below IS the day: daylight blue at the top, golden hour, dusk
+   violet, night navy at the bottom — the same progression js/timeofday.js
+   grades the city through, and the same one the vignette tint follows
+   (VIG_HOURS in js/graphics.js). The input is rotated 90deg, so its local
+   0% is the TOP of the panel, which is where the sun mark sits.
+
+   THE TOP IS LIGHT BLUE, NOT GOLD. Reported: "i like the daylight color
+   sliders better where the top is light blue." He is right and it is not only
+   taste — the first cut ran gold all the way to 0%, which is the one hour of
+   the day the city is NOT gold. `js/timeofday.js` grades noon to a
+   `sky: '#5d94cf'` zenith over a `horizon: '#c8e0f0'`, so a gold noon stop
+   made the control disagree with the scene it drives. The two day stops are
+   those two literals, taken from the route rather than guessed, and every
+   stop position now sits on a keyframe that already exists in the code:
+   VIG_HOURS' 0.35 warm / 0.50 golden / 0.68 dusk. Dusk and night are the
+   colours they always were. One line, one variable — overrule it here. */
+:root{
+  --tod-track:linear-gradient(90deg,
+    #c8e0f0 0%,      /* noon — timeofday.js day `horizon`   */
+    #5d94cf 18%,     /* afternoon — timeofday.js day `sky`  */
+    #e9c58a 35%,     /* haze, VIG_HOURS p .35 goes warm     */
+    #f5a623 50%,     /* golden hour, VIG_HOURS p .50        */
+    #d4662c 60%,     /* the burn just after sundown         */
+    #7a4a86 68%,     /* dusk violet, VIG_HOURS p .68        */
+    #33407d 85%,
+    #141c3d 100%);   /* night                               */
+}
+#tod-sun,#tod-moon{line-height:0;user-select:none;display:flex;align-items:center;justify-content:center}
+#tod-sun{color:#f8ca6d;filter:drop-shadow(0 0 5px rgba(248,202,109,.45))}
+#tod-moon{color:#c6d3f2;filter:drop-shadow(0 0 5px rgba(198,211,242,.35))}
+#tod-slider-wrap{height:170px;width:34px;display:flex;align-items:center;justify-content:center}
+#tod-slider{width:170px;height:18px;transform:rotate(90deg);cursor:pointer;
+  -webkit-appearance:none;appearance:none;background:transparent;outline:none}
+/* The two vendor track/thumb rules cannot be combined into one selector list:
+   an unrecognised pseudo-element invalidates the WHOLE rule in both engines,
+   so a shared `::-webkit-…,::-moz-…` block styles neither browser. */
+#tod-slider::-webkit-slider-runnable-track{height:8px;border-radius:999px;
+  background:var(--tod-track);
+  box-shadow:inset 0 0 0 1px rgba(255,190,90,.24),inset 0 1px 3px rgba(0,0,0,.5)}
+#tod-slider::-moz-range-track{height:8px;border-radius:999px;
+  background:var(--tod-track);
+  box-shadow:inset 0 0 0 1px rgba(255,190,90,.24),inset 0 1px 3px rgba(0,0,0,.5)}
+#tod-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:16px;height:16px;margin-top:-4px;border-radius:50%;border:1.5px solid rgba(255,238,196,.92);
+  background:radial-gradient(circle at 34% 30%,#fff8e6 0%,#f7d494 55%,#c98a2e 100%);
+  box-shadow:0 0 0 3px rgba(18,11,4,.6),0 2px 9px rgba(0,0,0,.55),0 0 10px rgba(245,166,35,.5);
+  transition:transform .12s ease}
+#tod-slider::-moz-range-thumb{width:16px;height:16px;border-radius:50%;border:1.5px solid rgba(255,238,196,.92);
+  background:radial-gradient(circle at 34% 30%,#fff8e6 0%,#f7d494 55%,#c98a2e 100%);
+  box-shadow:0 0 0 3px rgba(18,11,4,.6),0 2px 9px rgba(0,0,0,.55),0 0 10px rgba(245,166,35,.5)}
+#tod-slider:active::-webkit-slider-thumb{transform:scale(1.16)}
+#tod-slider:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(245,166,35,.75),0 2px 9px rgba(0,0,0,.55)}
+#tod-play{background:rgba(245,166,35,.16);border:1px solid rgba(245,166,35,.35);
+  color:#f5dfa0;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:11px;line-height:1;
+  display:flex;align-items:center;justify-content:center;transition:background .15s,box-shadow .15s}
+#tod-play:hover{background:rgba(245,166,35,.34)}
+#tod-play.playing{background:rgba(245,166,35,.42);box-shadow:0 0 12px rgba(245,166,35,.45)}
+@media(max-height:560px){#tod-slider-wrap{height:120px}#tod-slider{width:120px}}
+
+/* ── Graphics menu (js/graphics.js) ───────────────────────────────────
+   Built from JS, not markup, so _harness.html cannot drift out of sync with
+   index.html — the previous duplication cost a debugging session. */
+#gfx-button{position:absolute;top:16px;right:16px;z-index:30;
+  width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:rgba(18,11,4,.55);backdrop-filter:blur(10px) saturate(1.1);
+  border:1px solid rgba(255,190,90,.18);color:#f5dfa0;cursor:pointer;
+  box-shadow:0 4px 16px rgba(0,0,0,.3);transition:background .15s,color .15s,transform .15s}
+#gfx-button:hover{background:rgba(245,166,35,.28);color:#fff3d4;transform:rotate(35deg)}
+#gfx-button.active{background:rgba(245,166,35,.42);color:#fff}
+
+#gfx-panel{position:absolute;top:60px;right:16px;z-index:30;width:306px;
+  max-height:calc(100vh - 132px);display:flex;flex-direction:column;
+  background:rgba(16,10,3,.86);backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid rgba(255,190,90,.2);border-radius:14px;
+  box-shadow:0 16px 48px rgba(0,0,0,.55);color:#f5dfa0;
+  font-size:12px;user-select:none;overflow:hidden}
+#gfx-panel.hidden{display:none}
+#gfx-head{display:flex;align-items:center;gap:8px;padding:11px 13px 9px;
+  border-bottom:1px solid rgba(255,190,90,.13)}
+#gfx-title{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;flex:1}
+#gfx-fps{font-size:10.5px;font-variant-numeric:tabular-nums;opacity:.75;letter-spacing:.02em}
+#gfx-fps.good{color:#8fd88f}#gfx-fps.ok{color:#f0c56a}#gfx-fps.bad{color:#e88a72}
+#gfx-close{background:none;border:none;color:rgba(245,223,160,.55);cursor:pointer;font-size:13px;padding:0 2px;line-height:1}
+#gfx-close:hover{color:#f5a623}
+
+/* Each preset button is a NAME plus four words saying what you get. The second
+   line is the entire fix for "the preset modes also dont make sense" — the
+   names were not wrong, they were unexplained. Two columns, not four, because
+   a two-line button needs the width. */
+#gfx-presets{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:10px 13px}
+.gfx-preset{display:flex;flex-direction:column;align-items:center;gap:1px;
+  background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.22);
+  border-radius:7px;color:rgba(245,223,160,.85);padding:5px 4px 6px;cursor:pointer;
+  transition:background .14s,border-color .14s,color .14s}
+.gfx-preset-name{font-size:11.5px;line-height:1.2}
+.gfx-preset-say{font-size:9px;letter-spacing:.02em;opacity:.55;line-height:1.2}
+.gfx-preset:hover{background:rgba(245,166,35,.26)}
+.gfx-preset.active{background:rgba(245,166,35,.44);border-color:rgba(245,190,90,.7);color:#fff8e6}
+.gfx-preset.active .gfx-preset-name{font-weight:600}
+.gfx-preset.active .gfx-preset-say{opacity:.8}
+
+#gfx-body{overflow-y:auto;padding:2px 13px 4px;flex:1;overscroll-behavior:contain}
+#gfx-body::-webkit-scrollbar{width:7px}
+#gfx-body::-webkit-scrollbar-thumb{background:rgba(245,166,35,.3);border-radius:4px}
+.gfx-group{display:flex;flex-direction:column;gap:1px;
+  margin:11px 0 5px;padding-bottom:4px;border-bottom:1px solid rgba(255,190,90,.09)}
+.gfx-group-name{font-size:9.5px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;
+  color:rgba(245,166,35,.72)}
+.gfx-group-note{font-size:9.5px;letter-spacing:.01em;color:rgba(245,223,160,.42);line-height:1.3}
+
+/* TWO LINES PER CONTROL — name + value, then the slider — and a third only on
+   the handful of rows that carry a hint (js/graphics.js SCHEMA).
+
+   It was three lines on all twenty, and the third was a paragraph. Reported as
+   "add making the graphics menu less yap": 2,063 characters of help text and
+   1,718 px of content meant five controls fit on a 1440x900 screen before you
+   had to scroll. The name still gets its own line rather than the old 88 px
+   column, because that column is what forces a label to be "Bloom" instead of
+   "Glow" — short names picked for fitting, not for being understood. */
+.gfx-row{display:flex;flex-direction:column;gap:2px;padding:6px 0 7px;cursor:pointer;
+  border-bottom:1px solid rgba(255,190,90,.045)}
+.gfx-row:last-child{border-bottom:none}
+.gfx-rowhead{display:flex;align-items:center;gap:9px}
+.gfx-name{flex:1;min-width:0;font-size:12px;opacity:.95;line-height:1.25}
+.gfx-row input[type=range]{width:100%;min-width:0;height:16px;margin:1px 0 0;accent-color:#f5a623;cursor:pointer}
+.gfx-val{flex:none;text-align:right;font-size:10.5px;opacity:.62;font-variant-numeric:tabular-nums}
+.gfx-check{flex:none;width:15px;height:15px;accent-color:#f5a623;cursor:pointer}
+/* Dim and small on purpose: a hint is there when you go looking for it and out
+   of the way when you are scanning names. */
+.gfx-hint{font-size:9.5px;line-height:1.3;color:rgba(245,223,160,.42)}
+
+#gfx-foot{display:flex;gap:6px;padding:9px 13px 11px;border-top:1px solid rgba(255,190,90,.13)}
+#gfx-foot button{flex:1;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.26);
+  border-radius:7px;color:rgba(245,223,160,.9);font-size:11px;padding:5px 6px;cursor:pointer;transition:background .14s}
+#gfx-foot button:hover{background:rgba(245,166,35,.3)}
+#gfx-reload{display:none;background:rgba(232,138,114,.18)!important;border-color:rgba(232,138,114,.45)!important}
+#gfx-reload.show{display:block}
+
+/* The panel occupies the whole right edge, which is where the time-of-day
+   slider and the snapshot picker live. Slide them clear while it is open rather
+   than letting a settings panel bury the two controls people use most. */
+@media(min-width:641px){
+  body.gfx-open #tod-panel,body.fb-open #tod-panel{right:332px}
+  body.gfx-open #date-panel,body.fb-open #date-panel{right:332px}
+}
+
+/* ── The recommendations box (js/graphics.js) ─────────────────────────
+   Same visual family as the graphics panel — it is the same corner, the same
+   glass, the same amber — so the two read as one set of controls rather than
+   as two different apps stacked on top of each other. */
+#fb-button{position:absolute;top:16px;right:58px;z-index:30;
+  width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:rgba(18,11,4,.55);backdrop-filter:blur(10px) saturate(1.1);
+  border:1px solid rgba(255,190,90,.18);color:#f5dfa0;cursor:pointer;
+  box-shadow:0 4px 16px rgba(0,0,0,.3);transition:background .15s,color .15s,transform .15s}
+#fb-button:hover{background:rgba(245,166,35,.28);color:#fff3d4;transform:translateY(-1px)}
+#fb-button.active{background:rgba(245,166,35,.42);color:#fff}
+
+#fb-panel{position:absolute;top:60px;right:16px;z-index:30;width:306px;
+  max-height:calc(100vh - 132px);display:flex;flex-direction:column;
+  background:rgba(16,10,3,.88);backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid rgba(255,190,90,.2);border-radius:14px;
+  box-shadow:0 16px 48px rgba(0,0,0,.55);color:#f5dfa0;font-size:12px;overflow:hidden}
+#fb-panel.hidden{display:none}
+#fb-head{display:flex;align-items:center;gap:8px;padding:11px 13px 9px;
+  border-bottom:1px solid rgba(255,190,90,.13)}
+#fb-title{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;flex:1}
+#fb-close{background:none;border:none;color:rgba(245,223,160,.55);cursor:pointer;font-size:13px;padding:0 2px;line-height:1}
+#fb-close:hover{color:#f5a623}
+#fb-body{overflow-y:auto;padding:11px 13px 4px;flex:1;display:flex;flex-direction:column;gap:8px;
+  overscroll-behavior:contain}
+#fb-body::-webkit-scrollbar{width:7px}
+#fb-body::-webkit-scrollbar-thumb{background:rgba(245,166,35,.3);border-radius:4px}
+#fb-lead{font-size:10.5px;line-height:1.45;color:rgba(245,223,160,.6)}
+#fb-panel textarea,#fb-panel input[type=text],#fb-panel input[type=email]{
+  width:100%;font:inherit;font-size:12px;color:#f7e6bd;
+  background:rgba(40,24,8,.55);border:1px solid rgba(255,180,60,.24);border-radius:8px;
+  padding:8px 9px;outline:none;transition:border-color .15s,background .15s}
+#fb-panel textarea{resize:vertical;min-height:84px;line-height:1.4}
+#fb-panel textarea:focus,#fb-panel input:focus{border-color:rgba(245,166,35,.65);background:rgba(48,29,10,.7)}
+#fb-panel ::placeholder{color:rgba(245,223,160,.34)}
+#fb-viewrow{display:flex;align-items:center;gap:8px;font-size:10.5px;
+  color:rgba(245,223,160,.6);cursor:pointer}
+#fb-view{width:14px;height:14px;flex:none;accent-color:#f5a623;cursor:pointer}
+.fb-status{font-size:10px;line-height:1.45;color:rgba(245,223,160,.55);min-height:1px}
+.fb-status.off{color:rgba(240,197,106,.72)}
+.fb-status.good{color:#8fd88f}
+.fb-status.bad{color:#e88a72}
+#fb-foot{padding:9px 13px 11px;border-top:1px solid rgba(255,190,90,.13)}
+#fb-send{width:100%;background:rgba(245,166,35,.24);border:1px solid rgba(245,166,35,.45);
+  border-radius:8px;color:#fff3d4;font:inherit;font-size:12px;font-weight:600;letter-spacing:.04em;
+  padding:7px 6px;cursor:pointer;transition:background .14s}
+#fb-send:hover:not(:disabled){background:rgba(245,166,35,.42)}
+#fb-send:disabled{opacity:.4;cursor:not-allowed;background:rgba(245,166,35,.08)}
+/* js/feedback.js adds a Copy fallback next to Send (mail-app handoff path
+   only). Keyed on the class it sets, so a foot without the button keeps the
+   original single full-width Send. Send stays the wider of the two — it is
+   the primary action; Copy is the recovery for machines with no mail app. */
+#fb-foot.has-copy{display:flex;gap:6px}
+#fb-foot.has-copy #fb-send{width:auto;flex:1.6}
+#fb-copy{flex:1;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.26);
+  border-radius:8px;color:rgba(245,223,160,.9);font:inherit;font-size:12px;
+  padding:7px 6px;cursor:pointer;transition:background .14s}
+#fb-copy:hover{background:rgba(245,166,35,.3)}
+
+@media(max-width:640px){
+  /* Stops above the drive controls, for the reason in the #gfx-panel block. */
+  #fb-panel{top:auto;bottom:var(--drive-clear);left:8px;right:8px;width:auto;
+    max-height:calc(76vh - var(--drive-clear));border-radius:16px}
+}
+
+#gfx-toast{position:absolute;bottom:78px;left:50%;transform:translateX(-50%) translateY(10px);z-index:31;
+  background:rgba(16,10,3,.9);backdrop-filter:blur(12px);border:1px solid rgba(255,190,90,.22);
+  border-radius:999px;padding:8px 18px;color:#f5dfa0;font-size:11.5px;letter-spacing:.02em;
+  pointer-events:none;opacity:0;transition:opacity .35s ease,transform .35s ease;white-space:nowrap;max-width:92vw}
+#gfx-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* On a phone the panel is a bottom sheet — a 274 px floating card next to a
+   right-thumb look swipe is unusable, and the gear must clear the HUD pill. */
+@media(max-width:640px){
+  /* ── QUEUE Y10 item 4: THE SHEET STOPS ABOVE THE DRIVE CONTROLS ────────
+     It was `bottom:0; max-height:70vh`, which on a 393x852 phone is a panel
+     393x596 at y256 — exactly 70.0% of the screen — and elementFromPoint at
+     the stick's centre returned SPAN.gfx-group-note while the same probe at
+     BOOST's centre returned SPAN.gfx-name. The settings panel was literally on
+     top of both driving controls, so at walking height you could not move away
+     from it; the only cure was to find the close button.
+
+     Same move #wf-sheet makes for the same reason: the TOP edge does not
+     change at all (it still lands at y256, because the height given up at the
+     bottom is exactly the height the cap loses), and the panel becomes a card
+     with air under it instead of a sheet welded to the floor. */
+  #gfx-panel{top:auto;bottom:var(--drive-clear);left:8px;right:8px;width:auto;
+    max-height:calc(70vh - var(--drive-clear));border-radius:16px}
+  /* Clear of the top-right buttons at their touch size — see the block below.
+     16px inset + a 44px button + 8px of air. */
+  #gfx-toast{bottom:auto;top:calc(16px + var(--touch-min) + 8px)}
+  /* ── QUEUE Y10 item 4, second half: THE TOP-RIGHT BUTTONS WERE 34x34 ───
+     Both were under the 44px minimum, on the two controls a first-time visitor
+     is most likely to reach for. They go to --touch-min here and nowhere else:
+     with a mouse, 34px is fine and the desktop corner stays as tight as it was.
+     #fb-button's inset has to grow with them or the two overlap — at 34px the
+     right:58px inset left 8px of air, at 44px it leaves −2px. */
+  #gfx-button,#fb-button{width:var(--touch-min);height:var(--touch-min)}
+  #fb-button{right:calc(16px + var(--touch-min) + 8px)}
+  /* The time-of-day pill measured 278 px tall on a 390x844 phone — a third of
+     the frame parked over the scene's heart. Same control, ~24% smaller. */
+  #tod-slider-wrap{height:112px;width:var(--touch-min)}
+  /* `height` on the input is the ROTATED thickness — i.e. how wide a band of
+     glass the drag lands in. It was 18px; the track it draws stays 8px, so the
+     control looks identical and is two and a half times easier to hit. */
+  #tod-slider{width:112px;height:var(--touch-min)}
+  #tod-panel{gap:7px;padding:10px 7px}
+  #tod-sun svg,#tod-moon svg{width:12px;height:12px}
+  #tod-play{width:var(--touch-min);height:var(--touch-min);font-size:12px}
+  #date-select{max-width:112px;font-size:12px}
+}
+
+/* Attribution: present (license) but quiet — the old orange links were the
+   brightest text in every golden-hour frame. */
+.maplibregl-ctrl-attrib{font-size:10px!important;background:rgba(20,12,4,.55)!important;color:rgba(245,223,160,.5)!important;opacity:.75}
+.maplibregl-ctrl-attrib a{color:rgba(245,223,160,.65)!important}
+.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{display:none}
+
+/* Narrow screens: the hint and the attribution bar sat on top of each other,
+   and the snapshot picker crowded the joystick. */
+@media(max-width:520px){
+  /* ── QUEUE Y10 item 7: THE HINT WAS WIDER THAN THE PHONE ───────────────
+     Measured at 393x852: 404.5 px wide starting at x = −5.8, so both ends ran
+     off the glass and the sentence was clipped at BOTH edges. `white-space:
+     nowrap` is correct here — this line has to stay on one row, because the
+     only row in the bottom third of a 393px screen that is clear of the stick
+     and of BOOST is this one, and a second line grows up into them.
+
+     So the fit is bought with type, not with wrapping: --hint-fs and the
+     side padding are the two values, and at 9.5px/9px the same sentence
+     measures ~362 px — inside the glass with ~15 px of margin either side.
+     Both are named; change either one and the other still holds. */
+  #controls-hint{--hint-fs:9.5px;bottom:38px;font-size:var(--hint-fs);padding:5px 9px}
+  #hud{max-width:calc(100vw - 32px);padding:6px 16px}
+  #hud-title{font-size:11px}
+  /* The date pill already shows the snapshot date — the HUD needn't repeat it
+     on a frame this small. */
+  #hud-snapshot{display:none}
+  #date-panel{bottom:96px;right:12px;padding:6px 9px}
+  #date-label{display:none}
+  #tod-panel{right:8px;padding:10px 7px}
+  /* The title pill runs almost the full width at this size, so the second
+     top-right button stacks UNDER the gear instead of beside it. Derived from
+     --touch-min: 16px inset + one button + 8px of air. */
+  #fb-button{top:calc(16px + var(--touch-min) + 8px);right:16px}
+  /* ...and with the buttons stacked, the toast clears BOTH of them. */
+  #gfx-toast{top:calc(16px + 2 * (var(--touch-min) + 8px))}
+}
+
+/* ══ WAYFIND (js/wayfind.js) ═════════════════════════════════════════════════
+   "I am here, my next class is in WEL". Everything here is #wf-* and NONE of
+   these elements exist unless the feature was explicitly asked for — with the
+   feature off, js/wayfind.js returns before it touches the DOM, so not one of
+   these selectors can match and the frame is byte-identical to what it is
+   today. That is deliberate: main is being screen-recorded.
+
+   The layout claim in one line: at rest the feature is a single 44x44 button in
+   the top-left corner, which is the ONLY corner free at every breakpoint
+   (#hud top-centre, #gfx-button and #fb-button top-right, #tod-panel right
+   edge, #joystick-zone bottom-left, #controls-hint bottom-centre, attribution
+   bottom-right). Answered, the bar takes the row below the top buttons, where
+   nothing else lives once `body.wf-routed` has hidden #hud.
+
+   ── EVERY TASTE VALUE IS ONE LINE, AT THE TOP ────────────────────────────────
+   CLAUDE.md rule 11. The numeric judgements live in `WF_UI` in js/wayfind.js;
+   every SIZE and COLOUR is a custom property in the `#wf-root` block directly
+   below, so any aesthetic call in this feature can be overruled with a one-line
+   edit and without reading a rule. Nothing further down invents a colour.
+
+   ── THE COMMENT THAT ATE ITS OWN RULE (fixed 2026-08-23, acer/w-ui) ──────────
+   The QUEUE Z7 note that used to sit above the phone rule for #wf-pill closed
+   itself with a comment terminator, then carried on for four more lines of
+   English and terminated a second time. CSS has
+   no way to read that as a comment: the second half became a selector prelude,
+   the prelude ran on into `#wf-pill{...}`, and an invalid selector drops the
+   whole rule. So the fix Z7 shipped — the answer bar pinned to both edges and
+   dropped below the top buttons — was silently NOT IN EFFECT on any phone, for
+   however long that comment had been there. Photographed at 390x844 before the
+   fix: the bar was the 197 px column Z7 was written to kill, its headline was
+   on two lines, `Show route` was wrapping inside its own button, and it was
+   sitting on top of the three top-row buttons. Both halves of the note are kept
+   below, inside ONE comment this time.
+   ──────────────────────────────────────────────────────────────────────────── */
+#wf-root{
+  /* type */
+  --wf-big:27px;            /* the minutes. The one number read at a glance */
+  --wf-unit:12.5px;         /* `min walk` beside it */
+  --wf-fact:12.5px;         /* distance and the stairs sentence */
+  --wf-line:12.5px;         /* the destination line. Raised from 11.5: WHICH
+                               BUILDING is the subject of the whole bar and it
+                               was set smaller than the distance beside the
+                               minutes, so the one proper noun on screen was
+                               the third-smallest thing on it. */
+  --wf-small:10.5px;        /* footnotes, tags, the hint */
+  /* ink */
+  --wf-ink:#f8ead0;
+  --wf-dim:rgba(248,234,208,.60);
+  --wf-dimmer:rgba(248,234,208,.42);
+  --wf-accent:#ffc663;      /* the one warm hit: the minutes and the fill */
+  /* surfaces */
+  --wf-glass:rgba(17,10,3,.72);
+  --wf-glass-solid:rgba(15,9,2,.93);
+  --wf-edge:rgba(255,190,90,.20);
+  --wf-edge-soft:rgba(255,190,90,.12);
+  --wf-hot:rgba(245,166,35,.30);
+  --wf-shadow:0 10px 34px rgba(0,0,0,.42);
+  --wf-radius:16px;
+  --wf-pad:13px;
+  /* ROUND 6. The side padding on a GHOST control — one with no border and no
+     panel behind it. Smaller than a boxed button's, because the padding of a
+     box is what keeps ink off its edge and there is no edge here; it is only
+     buying the tap target its width now. Lowering it to 0 would make the words
+     touch their neighbours, raising it above ~14 pushes `Show route` and the ✕
+     off a 342 px bar next to a wide `Walk it`. */
+  --wf-ghost-pad:10px;
+  /* the strip */
+  /* THE RIBBON'S THICKNESS, AND IT IS THE WHOLE ARGUMENT ABOUT WHAT IT IS.
+     At 7 px this was a hairline track with a bright round cap at one end and,
+     while walking, a white circle sitting in the middle of an amber fill —
+     which is a volume slider, photographed at 390 x 844 and unmistakable. Two
+     rounds of notes here say "argued out of looking like a slider" and it was
+     still one on the frame, because the shapes of the ENDS were being asked to
+     carry a job that thickness does. A 10 px band with the marks sunk INTO it
+     reads as a bar chart of a journey; nothing in a phone's vocabulary offers
+     you a 10 px groove to drag. */
+  --wf-rail-h:14px;
+  /* AND IT IS NOT A PILL. A fully-rounded horizontal band with a bright round
+     mark at one end is a slider in every phone's vocabulary, whatever it is
+     made of; a band with a 4 px corner is a bar in a chart. This is the single
+     cheapest signal available and it was the one not being spent. */
+  --wf-rail-r:4px;
+  /* The room the two end marks get OUTSIDE the rail. Raised from 9 px: a
+     staircase 20 m from the door sits at 97 % of a 1 km route and clamps to
+     `stripMinPipT`, which puts it hard against the rail's right end — and with
+     9 px the destination ring began within a pixel of it, so the two read as
+     one smear at exactly the end of the walk. Photographed at 390 x 844 before
+     and after. */
+  --wf-cap-in:14px;
+  /* THE BAND IS THE WALK, NOT A TRACK WAITING FOR ONE.
+     At 17 % neutral cream this was an EMPTY groove with one bright round cap at
+     the far end, which is a slider at 100 % and reads as one however thick it
+     gets. Filled with the route's own colour it becomes a drawn thing — the
+     same amber the ribbon on the ground is, the same amber the manoeuvre disc
+     and `Walk it` are — and the destination ring stops being the only lit
+     object on it. The BRIGHTER `--wf-fill` is still what the walked part gets,
+     so progress is a change of weight inside one object rather than a fill
+     creeping along a rail. */
+  --wf-rail:rgba(255,198,99,.26);
+  --wf-fill:#ffc663;
+  --wf-pip-stairs:#ffdca8;
+  --wf-pip-signal:#9ed3ff;
+  /* THE STOP IS NOT THE SAME BLUE AS A CROSSING. It was #8fd3ff against the
+     crossing's #9ed3ff — six units apart on one channel — and in the key that
+     put `2 signalised crossings` and `Starbucks` behind two dots no eye can
+     tell apart. On the rail alone the two never had to be told apart; the key
+     is what made them adjacent. (`WAYFIND.viaRingCol` still paints the ring on
+     the GROUND in the old blue and should follow this — that constant lives in
+     the shared taste block four lanes are appending to, so it is a written
+     request in docs/walk-ui.md rather than an edit from here.) */
+  --wf-pip-via:#8fe6bd;
+  --wf-you:#fffaf0;
+  --wf-you-w:4px;           /* the marker is a PLAYHEAD, not a thumb — see .wf-you */
+  --wf-you-h:24px;
+  /* THE GAP A MARK CUTS IN THE BAND. Near-black rather than transparent: the
+     bar sits on glass, and a transparent notch would show the city through the
+     journey and change colour as the camera moved. */
+  --wf-notch:#150d04;
+  --wf-notch-pad:3px;       /* how far the cut reaches either side of the mark */
+  /* the key under the strip — what a coloured mark on the rail stands for.
+     `title` is a desktop affordance and this bar is judged on a phone. */
+  --wf-key:10.5px;
+  --wf-key-gap:14px;
+  /* the two end marks, repeated on the origin and destination lines so the rail
+     reads as the walk between those two places and not as a slider */
+  --wf-mk-col:rgba(248,234,208,.8);
+  --wf-mk-w:15px;           /* the gutter both name lines are indented into */
+  --wf-mk-gap:6px;          /* ...and the air between that gutter and the name.
+                               Named because ROUND 7 makes the figure line share
+                               the same left edge, and one column that is set in
+                               three places is three columns waiting to happen. */
+  /* THE SPINE (round 7). The rail, stood on its end, in that same gutter —
+     drawn only on the routes where the rail is not. Deliberately quieter than
+     the marks it joins: it is the connection, not a fourth thing to read. */
+  --wf-spine-w:2px;
+  --wf-spine-col:rgba(248,234,208,.20);
+  --wf-then2-ic:15px;       /* the chained-turn glyph in the footer row, once it
+                               stopped being a disc and became a glyph */
+  /* the walking readout */
+  --wf-arrow:44px;
+  --wf-then:15px;           /* `, then left` beside the distance to the turn */
+
+  /* THE ITINERARY (round 3). The list of what the walk does, under the card. */
+  --wf-step:12px;           /* a row of the list */
+  --wf-step-h:22px;         /* its minimum height — the thread is continuous, so
+                               this is the spacing of the whole picture */
+  --wf-thread:rgba(255,222,170,.26);   /* the line the rows are strung on */
+  --wf-step-ic:17px;        /* the manoeuvre glyph in the gutter */
+  /* THE MODE GLYPH on the figure line: the walking figure in front of the
+     minutes. Sized off the minutes so it scales with them on a phone. */
+  --wf-mode:0.78em;
+  /* THE PRIMARY ACTION. It was amber at 26 % over dark glass — a button the
+     same weight as the panel behind it. Solid, with dark ink, it is the one
+     filled thing on the bar and matches the manoeuvre disc, which is the only
+     other solid amber the feature has. */
+  --wf-go-bg:#ffc663;
+  --wf-go-edge:#ffd68f;
+  --wf-go-ink:#221604;
+  /* the two rows the answer bar is measured against, so a button move carries
+     the bar with it instead of leaving it to be re-measured by hand */
+  --wf-btn-row:calc(var(--touch-min) + 8px);
+  /* ROUND 5. THE WORD ON THE CHEVRON, and the room every row above the strip
+     has to leave for it. `--wf-chev-clear` is what the three top rows are
+     padded by, so the label's size and the clearance are ONE number: the
+     previous 26 px was written out three times and would have gone stale the
+     moment the control changed width. */
+  --wf-chev-lab:10px;
+  --wf-chev-clear:74px;
+  /* THE WAY OUT OF THE WALK. Warm, but not filled — `Walk it` is the only
+     filled thing this feature has and it always means "the thing to do". A
+     wash is enough to stop the way out and the dismiss reading as a matched
+     pair of grey squares in the state where the way out has lost its word. */
+  --wf-out-bg:rgba(245,166,35,.16);
+  --wf-out-edge:rgba(255,190,90,.34);
+}
+
+#wf-button{position:absolute;top:16px;left:16px;z-index:30;
+  width:var(--touch-min);height:var(--touch-min);border-radius:12px;
+  display:grid;place-items:center;
+  background:var(--wf-glass);backdrop-filter:blur(10px) saturate(1.1);
+  border:1px solid var(--wf-edge);color:#f5dfa0;cursor:pointer;
+  box-shadow:0 6px 24px rgba(0,0,0,.28);transition:background .14s,color .14s}
+#wf-button:hover{background:var(--wf-hot);color:#fff3d4}
+#wf-button.active{background:rgba(245,166,35,.44);color:#fff}
+
+/* ══ THE QUESTION ═══════════════════════════════════════════════════════════
+   A COLUMN, NOT A BOX, and that is what makes the phone rules below possible:
+   the list is the one child allowed to give up height, so the sheet can be
+   capped at any height at all and the head, the two fields, the examples and
+   the footer are still whole. */
+#wf-sheet{position:absolute;top:68px;left:16px;z-index:30;width:344px;max-width:calc(100vw - 32px);
+  background:var(--wf-glass-solid);backdrop-filter:blur(14px) saturate(1.1);
+  border:1px solid rgba(255,190,90,.18);border-radius:var(--wf-radius);
+  box-shadow:var(--wf-shadow);color:var(--wf-ink);font-size:12.5px;overflow:hidden;
+  display:flex;flex-direction:column}
+#wf-sheet.hidden,#wf-pill.hidden,#wf-card.hidden,#wf-live.hidden,
+#wf-strip.hidden,#wf-egs.hidden,#wf-chev.hidden{display:none}
+#wf-head{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 10px 8px 14px;border-bottom:1px solid var(--wf-edge-soft)}
+#wf-head .wf-h{font-size:11px;font-weight:700;letter-spacing:.17em;text-transform:uppercase;
+  color:var(--wf-dim)}
+#wf-close{background:none;border:none;color:inherit;opacity:.6;cursor:pointer;
+  width:30px;height:30px;display:grid;place-items:center;padding:0;border-radius:8px}
+#wf-close svg{width:15px;height:15px}
+#wf-close:hover{opacity:1;background:rgba(255,255,255,.07)}
+
+/* THE TWO ENDS, and the swap button that lives on their seam. Swap is the one
+   thing a two-field router is asked for constantly, so it is a button and not a
+   menu item; the field column stops short of it rather than running under it. */
+#wf-ends{position:relative;padding:6px 40px 6px 0}
+.wf-row{position:relative;display:flex;align-items:center;gap:7px;padding:4px 0 4px 12px;flex:none}
+.wf-lab{font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--wf-dimmer);width:28px;flex:none}
+.wf-row input{flex:1;min-width:0;background:rgba(255,255,255,.055);
+  border:1px solid var(--wf-edge-soft);
+  border-radius:10px;color:#fff6e2;font:inherit;font-size:14px;
+  padding:0 11px;height:40px;outline:none;transition:border-color .12s,background .12s}
+/* THE CLEAR BUTTON ONLY EXISTS WHEN THERE IS SOMETHING TO CLEAR, so the room it
+   needs is only reserved then. Reserving it always cost 19 px of the field at
+   exactly the moment the field is empty and showing its placeholder, which is
+   how `Building code, name or number` came to render as `...name or num`. */
+.wf-row.has-val input{padding-right:30px}
+/* and the placeholder is set smaller than the value it stands in for: the
+   value has to clear iOS's 16 px zoom threshold, the placeholder does not. */
+.wf-row input::placeholder{color:rgba(248,234,208,.34);font-size:12px;letter-spacing:0}
+.wf-row input:focus{border-color:rgba(245,166,35,.55);background:rgba(255,255,255,.09)}
+.wf-x{position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  width:26px;height:26px;display:grid;place-items:center;padding:0;
+  background:none;border:none;border-radius:50%;color:var(--wf-dim);cursor:pointer;
+  opacity:0;pointer-events:none;transition:opacity .12s}
+.wf-x svg{width:11px;height:11px}
+.wf-x.on{opacity:1;pointer-events:auto}
+.wf-x:hover{background:rgba(255,255,255,.1);color:var(--wf-ink)}
+#wf-swap{position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;display:grid;place-items:center;padding:0;
+  background:rgba(255,255,255,.055);border:1px solid var(--wf-edge-soft);
+  border-radius:50%;color:var(--wf-dim);cursor:pointer;transition:background .12s,color .12s}
+#wf-swap svg{width:15px;height:15px}
+#wf-swap:hover{background:var(--wf-hot);color:#fff3d4}
+
+#wf-list{max-height:212px;overflow-y:auto;min-height:0;padding:2px 0}
+.wf-item{display:flex;align-items:baseline;gap:10px;padding:8px 14px;cursor:pointer;
+  min-height:34px;box-sizing:border-box}
+.wf-item:hover{background:rgba(245,166,35,.14)}
+/* THE ROW ENTER WILL TAKE. It used to be "the first routable match", which is
+   correct and completely invisible; arrow keys move it and it is drawn. */
+.wf-item.active{background:rgba(245,166,35,.20);box-shadow:inset 2px 0 0 var(--wf-accent)}
+/* Shown and NOT selectable, greyed. Hiding a building we have no door for
+   would read as "you typed it wrong"; this reads as "we don't have it". */
+.wf-item.off{opacity:.38;cursor:default}
+.wf-item.off:hover{background:none}
+.wf-code{font-weight:700;letter-spacing:.06em;width:50px;flex:none;color:#ffcf7a;font-size:12.5px}
+.wf-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.wf-meta{font-size:var(--wf-small);color:var(--wf-dimmer);flex:none}
+/* QUEUE Z9, second half. `+ N more — keep typing` used to be the last child of
+   #wf-list, so the list's own max-height cut it through the middle and the
+   remains sat on the hint line. It is a note ABOUT the results, not a result,
+   so it is a sibling of the scroller and cannot be clipped by it. `:empty`
+   because js writes textContent rather than adding and removing a node. */
+#wf-more{padding:5px 14px;font-size:var(--wf-small);color:var(--wf-dimmer);flex:none}
+#wf-more:empty{display:none}
+/* THE FIRST-RUN STATE, which interface.md listed as undesigned. Four codes you
+   can tap: it answers "what does this field want" with an example rather than a
+   sentence, and it is gone the moment a character is typed. */
+#wf-egs{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 14px 2px;flex:none}
+.wf-eg-lab{font-size:9.5px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--wf-dimmer);margin-right:1px}
+.wf-eg{background:rgba(255,255,255,.06);border:1px solid var(--wf-edge-soft);
+  border-radius:8px;color:#ffcf7a;font:inherit;font-size:11.5px;font-weight:700;
+  letter-spacing:.05em;padding:5px 10px;cursor:pointer}
+.wf-eg:hover{background:var(--wf-hot);color:#fff3d4}
+.wf-hint{padding:7px 14px;font-size:var(--wf-small);color:var(--wf-dimmer);line-height:1.45;flex:none}
+.wf-foot{padding:8px 14px 10px;border-top:1px solid rgba(255,190,90,.11);
+  font-size:9.5px;color:var(--wf-dimmer);line-height:1.55;flex:none}
+
+/* ══ THE ANSWER ═════════════════════════════════════════════════════════════
+   One bar. It takes the row below the top buttons — `body.wf-routed` hides
+   #hud, so nothing else wants it — and it holds, in this order: what is left
+   (only while the view is on the route), the whole-journey figures, the strip,
+   the destination and its door, and the passing-period line. */
+#wf-pill{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:11;
+  width:min(560px,calc(100vw - 120px));
+  background:var(--wf-glass);backdrop-filter:blur(12px) saturate(1.12);
+  border:1px solid var(--wf-edge);border-radius:var(--wf-radius);
+  box-shadow:var(--wf-shadow);padding:10px var(--wf-pad) 11px;color:var(--wf-ink);
+  text-align:left;cursor:pointer;box-sizing:border-box}
+/* THE OPEN BAR IS A SHEET, AND A SHEET IS OPAQUE.
+   Closed, this thing is four lines over sky and the 72 % glass is right. Open,
+   it is 540 px of small type over a city that is being rendered underneath it —
+   photographed at 390 x 844 on JES -> ANB, the itinerary's leg distances sat on
+   a bright green field and `260 m` was the same value as the grass behind it.
+   The search panel next door already solved this and has a token for it; the
+   open bar takes the same one, so there is exactly one "readable panel" colour
+   in the feature and it is set in one place. */
+#wf-pill.open{background:var(--wf-glass-solid)}
+body.wf-routed #hud{display:none}
+/* On purpose, and it is the one place this differs from #hud: you read the
+   answer WHILE walking, which is exactly when it matters. */
+body.wf-routed.flying #wf-pill{opacity:1}
+
+/* THE AFFORDANCE. Before this the card was behind a tap on an element with
+   nothing on it to tap. The chevron turns when the card is open. */
+/* A REAL BUTTON NOW (see buildUI), so it takes pointer events, a focus ring and
+   a thumb-sized target. The visible disc stays 26 px; the hit area is grown to
+   --touch-min with a negative-inset pseudo-element rather than by drawing a
+   44 px control in the corner of a bar that is only 172 px tall. */
+/* ROUND 5: THE CHEVRON CARRIES A WORD, because the list behind it is the one
+   shape this bar shares with every walking-directions app on a phone and
+   nothing on the frame said it was there. The disc is now a pill that sizes
+   itself to its label; the glyph alone still turns, so only ONE thing on this
+   control changes state and the word can stay put.
+   The rotation moves to the glyph, not the button — rotating the whole pill
+   would swing the word upside down. */
+#wf-chev{position:absolute;top:8px;right:8px;min-width:28px;height:28px;
+  display:flex;align-items:center;justify-content:flex-end;gap:5px;
+  color:var(--wf-dimmer);
+  background:none;border:none;padding:0 0 0 6px;cursor:pointer;border-radius:14px;
+  transition:color .12s,background .12s}
+#wf-chev::after{content:"";position:absolute;
+  top:calc((28px - var(--touch-min)) / 2);right:calc((28px - var(--touch-min)) / 2);
+  width:var(--touch-min);height:var(--touch-min)}
+#wf-chev:hover{background:rgba(255,255,255,.08);color:var(--wf-ink)}
+#wf-chev:focus-visible{outline:2px solid var(--wf-accent);outline-offset:1px}
+#wf-chev svg{width:16px;height:16px;flex:none;
+  transition:transform .16s ease}
+.wf-chev-lab{font-size:var(--wf-chev-lab);font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;white-space:nowrap;line-height:1}
+.wf-chev-lab:empty{display:none}
+#wf-pill:hover #wf-chev{color:var(--wf-ink)}
+#wf-pill.open #wf-chev{color:var(--wf-ink)}
+#wf-pill.open #wf-chev svg{transform:rotate(180deg)}
+/* Walking, `#wf-orig` is gone and that row belongs to the manoeuvre disc and
+   the distance to the next turn. A word in the corner of it is one more thing
+   to read at exactly the moment there is least time to read. */
+body.wf-live .wf-chev-lab{display:none}
+
+/* THE FIGURE LINE. The minutes are the one number read at a glance, so they are
+   the only thing on this bar set larger than the body. The rest of the sentence
+   is the same permitted string it always was — the type is spans inside
+   #wf-headline, so its .textContent is unchanged. */
+/* WHERE IT THINKS YOU ARE STARTING FROM. The From default is the routable
+   building nearest the CAMERA, which is a guess the app makes on your behalf,
+   so the bar shows it rather than hiding it under a tap. */
+#wf-orig{display:flex;align-items:baseline;gap:var(--wf-mk-gap);margin-bottom:3px;
+  padding-right:var(--wf-chev-clear);
+  font-size:var(--wf-small);min-width:0}
+#wf-orig.hidden{display:none}
+.wf-from-lab{font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--wf-dimmer);flex:none}
+.wf-from-name{color:var(--wf-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.wf-live #wf-orig{display:none}
+
+/* THE END MARKS, REPEATED ON THE NAMES. Identical shapes to .wf-cap-a and
+   .wf-cap-b on the rail — a flat tick for the start, a ring for the door — so
+   the origin line, the rail and the destination line are visibly one object.
+   `--wf-mk-w` is the gutter, and it is the SAME on both lines: two markers of
+   different widths would leave the two names off each other's left edge, which
+   is the whole reason a route header reads as a route in the first place. */
+/* AND THE TWO MARKS ARE ON ONE AXIS, WHICH THEY WERE NOT. `--wf-mk-w` made the
+   two NAMES share a left edge and the comment above says so — but the marks
+   themselves were both pinned at `left:0` of that gutter at two different
+   widths, so the 3 px tick's centre sat at x=1.5 and the 11 px ring's centre at
+   x=5.5. Four pixels of offset between the start of the journey and the end of
+   it, invisible on either mark alone and fatal to a line drawn between them.
+   `#wf-steps .wf-mk::before` has centred them since round 3, because the
+   itinerary runs a thread through them; the BAR never did, because until round
+   7 it had nothing to run. Same declaration, one place higher. */
+.wf-mk{flex:none;display:inline-block;width:var(--wf-mk-w);position:relative;
+  align-self:center}
+.wf-mk::before{content:"";position:absolute;top:50%;left:50%;
+  transform:translateX(-50%)}
+.wf-mk-a::before{width:3px;height:11px;margin-top:-5.5px;border-radius:2px;
+  background:var(--wf-mk-col)}
+.wf-mk-b::before{width:11px;height:11px;margin-top:-5.5px;border-radius:50%;
+  box-sizing:border-box;background:rgba(20,12,4,.9);border:2.5px solid var(--wf-accent)}
+
+/* ROUND 7: THE FIGURE LINE JOINS THE COLUMN. It was the only run of text in
+   the closed bar set flush to the panel's padding while the origin line above
+   it and the destination line below it were both indented into the mark gutter
+   — so the bar had two left edges 21 px apart, alternating down four rows.
+   Photographed at 390 x 844 on JES -> WEL. One column, and the gutter it opens
+   is where the spine runs. */
+#wf-headline{line-height:1.15;padding-right:var(--wf-chev-clear);
+  padding-left:calc(var(--wf-mk-w) + var(--wf-mk-gap))}
+/* THE SPINE. Position and height are written by `drawSpine()` — see its header
+   for why this one is measured and not declared. It is `hidden` far more often
+   than not: it appears only on a route with nothing on its rail, which is where
+   round 5 left the two end marks with nothing between them. */
+#wf-spine{position:absolute;width:var(--wf-spine-w);
+  margin-left:calc(var(--wf-spine-w) / -2);
+  background:var(--wf-spine-col);border-radius:calc(var(--wf-spine-w) / 2);
+  pointer-events:none}
+#wf-spine.hidden{display:none}
+/* THE MODE, IN FRONT OF THE NUMBER. Sized off the minutes so it comes down with
+   them on a phone, and set in the ink colour rather than the accent — the
+   accent is the number's, and two amber things on one line is two headlines. */
+#wf-headline .wf-mode{width:var(--wf-mode);height:var(--wf-mode);
+  font-size:var(--wf-big);color:rgba(248,234,208,.82);
+  margin-right:.30em;vertical-align:-.02em}
+#wf-headline .wf-pre{font-size:var(--wf-unit);color:var(--wf-dim)}
+#wf-headline .wf-big{font-size:var(--wf-big);font-weight:700;letter-spacing:-.01em;
+  color:var(--wf-accent);font-variant-numeric:tabular-nums}
+#wf-headline .wf-unit{font-size:var(--wf-unit);font-weight:600;color:var(--wf-dim)}
+#wf-headline .wf-mid{color:var(--wf-dimmer)}
+#wf-headline .wf-dist,#wf-headline .wf-cond{font-size:var(--wf-fact);font-weight:600;
+  color:rgba(248,234,208,.86)}
+/* The stairs swatch, inline in the sentence it belongs to. Same .wf-pip class
+   as the mark on the rail, so the colour is bound in one place. */
+/* THE CONDITION IS THE SECOND LINE OF THE FIGURE LINE, ALWAYS. As an inline
+   run it wrapped only on the routes long enough to overflow, and when it did it
+   left the middot stranded at the end of the line above. `display:flex` makes
+   it a block-level line of its own on every route, so the bar has ONE layout
+   instead of two, and the stairs swatch leads a line instead of appearing
+   mid-sentence. The middot in front of it is hidden rather than removed —
+   `#wf-headline`.textContent is what the verify scripts assert on. */
+#wf-headline .wf-cond{display:flex;align-items:center;gap:6px;margin-top:2px}
+#wf-headline .wf-mid-cond{position:absolute;width:1px;height:1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap}
+.wf-pip.wf-sw{position:static;margin:0;flex:none}
+#wf-headline.fail{font-size:13px;font-weight:600;line-height:1.35}
+
+/* THE STRIP — where the things on this route actually are.
+   NOT AN ELEVATION PROFILE and it must never be mistaken for one: §12 of
+   docs/walk/what-we-can-honestly-say.md forbids the whole hill family and there
+   is no elevation source in this repo. It is a flat rail with a pip at each
+   mapped staircase and each signalised crossing, at its true fraction of the
+   route — the counts the bar already prints, turned into WHERE. */
+#wf-strip{position:relative;margin:10px 0 9px;height:20px}
+/* The rail is inset by --wf-cap-in so the two end marks sit OUTSIDE it. A pip
+   at 97 % of the route is a real thing (a staircase twenty metres from the
+   door) and inside the rail it was drawn underneath the destination ring. */
+.wf-rail{position:absolute;left:var(--wf-cap-in);right:var(--wf-cap-in);top:50%;
+  margin-top:calc(var(--wf-rail-h) / -2);
+  height:var(--wf-rail-h);border-radius:var(--wf-rail-r);background:var(--wf-rail);
+  /* An inner hairline, not an outer one: a band with a rim around it is a
+     trough, and a trough is a slider. This one sits just inside the edge, so
+     the shape reads as a solid tile of the journey rather than a channel. */
+  box-shadow:inset 0 0 0 1px rgba(255,222,170,.10)}
+.wf-fill{position:absolute;left:0;top:0;bottom:0;
+  border-radius:var(--wf-rail-r) 0 0 var(--wf-rail-r);
+  background:linear-gradient(90deg,rgba(255,198,99,.55),var(--wf-fill));width:0}
+/* EVERY MARK CUTS THE BAND, AND THAT IS WHAT STOPS IT BEING A SLIDER.
+   Thickness alone did not do it and neither did colour: photographed at
+   390 x 844 on JES -> ANB, a 14 px amber band with a pale blue four-crossing
+   capsule sitting in it at 72 % and a bright ring at the right end still read
+   as an iOS control with a thumb on it, because ONE continuous track with ONE
+   prominent object on it is the shape of a slider whatever it is made of.
+
+   No slider in the world is SEGMENTED. Each mark now punches a full-height
+   notch straight through the band and sits in the gap, so the amber comes
+   apart into the stretches of uninterrupted walking between the things that
+   happen — which is also a better picture than the dots were: the width of a
+   piece is how far you go without stopping. The marks keep their own colours
+   and shapes, so the key row, the itinerary swatches and the rail are still
+   one element changed in one place. */
+.wf-pip{position:absolute;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;
+  border-radius:99px}
+/* The notch is its OWN element, appended just before the mark it belongs to,
+   because a ::before is painted over its element's background and would have
+   covered the very dot it exists to frame. renderStrip sizes it from the same
+   number that sizes a merged capsule, so the two cannot drift. */
+.wf-notch{position:absolute;top:50%;
+  margin-top:calc(var(--wf-rail-h) / -2 - 1px);
+  height:calc(var(--wf-rail-h) + 2px);background:var(--wf-notch);
+  border-radius:1.5px}
+/* two of a kind within pipMergeT of each other: one BLOCK, labelled with the
+   count, so the number of things on the strip equals the number in the card.
+   A BLOCK AND NOT A CAPSULE, and this is the second time this element has had
+   to be argued out of looking like a control: with the notch behind it, a
+   rounded blue capsule inside a dark rounded slot is an iOS toggle switch,
+   photographed on JES -> ANB at 390 x 844 with four crossings merged. Square
+   the corners and the same mark is a run of the bar in a different colour,
+   which is what it is. */
+.wf-pip.multi{border-radius:2.5px}
+.wf-pip-stairs.multi{border-radius:2.5px}
+.wf-pip-stairs{background:var(--wf-pip-stairs);border-radius:1.5px;
+  width:9px;height:9px;margin:-4.5px 0 0 -4.5px}
+.wf-pip-signal{background:var(--wf-pip-signal)}
+.wf-pip-via{background:var(--wf-pip-via);width:10px;height:10px;margin:-5px 0 0 -5px}
+.wf-pip.past{opacity:.42}
+/* THE TWO ENDS. Drawn as DIFFERENT SHAPES on purpose: a rail with a round blob
+   at each end is a slider, and the first cut of this read as one — a control
+   you could drag rather than a picture of a walk. The start is a flat tick, the
+   destination is a ring, and neither is a thumb. */
+.wf-cap{position:absolute;top:50%}
+/* THE TWO TERMINALS ARE THE SAME HEIGHT AS THE BAND. A mark standing PROUD of
+   a track is a handle; a mark exactly as tall as the bar it ends is a terminal
+   on a chart. Both are `--wf-rail-h` now, so the three move together. */
+.wf-cap-a{left:1px;width:3px;height:var(--wf-rail-h);
+  margin-top:calc(var(--wf-rail-h) / -2);border-radius:2px;
+  background:rgba(248,234,208,.8);box-shadow:0 0 0 1.5px rgba(20,12,4,.7)}
+.wf-cap-b{right:0;width:var(--wf-rail-h);height:var(--wf-rail-h);
+  margin-top:calc(var(--wf-rail-h) / -2);border-radius:50%;
+  background:rgba(20,12,4,.9);border:3px solid var(--wf-accent);box-sizing:border-box}
+/* WHERE THE VIEW IS ON THE ROUTE — A PLAYHEAD, NOT A THUMB.
+   This was a 13 px white DISC with a glow, sitting on an amber fill, on a
+   hairline track. Photographed walking 21 Rio -> WEL at 390 x 844, the result
+   was an iOS volume slider at 43 %, on a bar whose one job is to be a picture
+   rather than a control. A tall thin bar that overhangs the band both ways is
+   the mark every scrubbing UI in the world uses for POSITION and none of them
+   use for a handle, and the overhang is what makes it read as sitting ON the
+   journey rather than IN a groove. */
+.wf-you{position:absolute;top:50%;width:var(--wf-you-w);height:var(--wf-you-h);
+  margin-top:calc(var(--wf-you-h) / -2);margin-left:calc(var(--wf-you-w) / -2);
+  border-radius:2px;background:var(--wf-you);
+  box-shadow:0 0 0 1.5px rgba(20,12,4,.85),0 0 10px rgba(255,232,180,.6)}
+
+/* THE KEY. Only on the frame when the route actually has marks on it — an
+   empty legend under an empty rail is two rows of nothing. Wraps rather than
+   truncates: at 366 px a stairs count and a crossings count fit on one line and
+   a third item (the stop on the way, which carries a business name) does not,
+   and a business name cut to `Medi…` is worse than a second row. */
+#wf-key{display:flex;flex-wrap:wrap;gap:4px var(--wf-key-gap);margin:-3px 0 8px;
+  font-size:var(--wf-key);color:var(--wf-dim);line-height:1.3}
+#wf-key.hidden,#wf-key:empty{display:none}
+/* ROUND 4: WALKING, THE SAME ROW COUNTS WHAT IS STILL IN FRONT OF YOU.
+   It used to be hidden on the move, on the reasoning that a legend is read once
+   standing still — which was right about the legend and wrong about the row.
+   The row it was making space for was the whole-route figure line demoted to
+   footnote size: a SECOND complete trip summary under the first, and a stale
+   one, because `Stairs: 3 sets` goes on counting sets you have already climbed.
+   The marks past the camera's own projection onto the line are the same
+   measurement as `remaining` and they are the ones that change what you do. */
+#wf-key.ahead{color:rgba(248,234,208,.82);font-size:var(--wf-fact);
+  font-weight:600;margin:2px 0 8px}
+.wf-aheadtag{font-size:var(--wf-small);color:var(--wf-dimmer);font-weight:700;
+  text-transform:uppercase;letter-spacing:.13em;align-self:center}
+/* WITH THE CARD OPEN THE LEGEND IS THE LIST'S JOB. `#wf-steps` prints every one
+   of these marks, in order, with the SAME swatch — so on the open bar the key
+   is the identical fact twice, forty pixels apart, and the 18 px it costs buys
+   another row of the itinerary on a phone. The rail stays: it is the picture,
+   and the list is the words. */
+#wf-pill.open #wf-key:not(.ahead){display:none}
+.wf-keyit{display:inline-flex;align-items:center;gap:6px;min-width:0}
+/* The swatch IS a pip — same class, so a colour or a shape changed above moves
+   the key with it and cannot be left behind. Only the absolute placement the
+   rail imposes is undone. */
+#wf-key .wf-pip{position:static;margin:0;flex:none}
+.wf-keytx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+#wf-sub{display:flex;align-items:baseline;gap:var(--wf-mk-gap);font-size:var(--wf-line);
+  line-height:1.35;flex-wrap:wrap}
+#wf-sub .wf-dest{font-weight:700;color:var(--wf-ink)}
+#wf-sub .wf-mid{color:var(--wf-dim);font-weight:400}
+/* Present in .textContent, absent from the frame — see the note in renderPill. */
+#wf-sub .wf-mid-hid{position:absolute;width:1px;height:1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap}
+/* WHICH DOOR is the one answer here that a maps app does not have, and it was
+   the dimmest run of text on the bar. It keeps the modest colour — it is a
+   qualifier, not a headline — and gains a doorway glyph so the eye finds it. */
+#wf-sub .wf-door{display:inline-flex;align-items:center;gap:4px;
+  color:rgba(248,234,208,.72);font-weight:500;min-width:0}
+.wf-door-ic{width:12px;height:12px;flex:none;opacity:.75;transform:translateY(.5px)}
+body.wf-live #wf-sub{margin-top:2px}
+/* ROUND 6: AND WHILE YOU ARE WALKING IT WAITS UNTIL YOU ARE NEARLY THERE.
+   Photographed at 390 x 844 walking JES -> WEL, `Entrances are on this side`
+   is the LONGEST line on the bar and it was on screen for the whole six
+   minutes — a sentence about which face of a building to aim for, printed
+   over half a kilometre before you can see the building. `body.wf-near`
+   arrives at `WF_UI.liveDoorNoteM` of route left (js/wayfind.js), and the
+   destination's NAME never goes anywhere, so what you lose is one long
+   qualifier for the first two thirds of the walk and what you gain is a bar
+   with one fewer thing on it. `visibility` rather than `display`, and the
+   phrase keeps its place in `#wf-sub`.textContent either way — the honesty
+   gates read that string and it must not move. */
+body.wf-live:not(.wf-near) #wf-sub .wf-door{
+  visibility:hidden;position:absolute;width:1px;height:1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap}
+/* ...AND THE BUILDING'S NAME GOES QUIET WHILE YOU ARE STILL A WAY OFF.
+   Photographed at 390 x 844 walking JES -> WEL: the remaining-figures row and
+   the destination row were set at the SAME weight and the same ink, two bold
+   lines stacked under one big amber number, which is the "stacked live card"
+   half of round 1's verdict. In the middle of a walk the live fact is how far
+   is left; the building's name is context you already chose. So it holds the
+   line, in the dim ink, at normal weight — and comes back to full weight with
+   the entrance phrase beside it the moment `wf-near` arrives, which is the
+   moment it becomes the thing you are about to act on. Nothing appears or
+   disappears; one line changes weight once, on approach. */
+body.wf-live:not(.wf-near) #wf-sub .wf-dest{color:var(--wf-dim);font-weight:500}
+body.wf-live:not(.wf-near) #wf-sub .wf-mk-b{opacity:.55}
+/* THE PASSING-PERIOD LINE (docs/walk/what-we-can-honestly-say.md §15). Above the
+   fold in the closed bar because "do I have time" is the question, and an
+   answer you have to tap to see is not an answer. Two states and deliberately
+   no third, green, everything-is-fine state — a tick is a promise with the
+   words taken out. `:empty` keeps the bar the same height with nothing to say. */
+/* THE LAST ROW IS ONE ROW.
+   Photographed at 390 x 844 while walking, the bottom of the bar was a
+   passing-period warning on a line of its own, and under it a 44 px row holding
+   one 90 px `Clear` button with 270 px of nothing beside it. This is a wrapping
+   flex: `#wf-acts` asks for 210 px, which is more than survives next to a
+   warning chip on a 366 px bar, so with the wide primary action present the
+   actions still take their own line — and while walking, when the only action
+   is `Clear`, the warning and the way out share the row and the bar is a row
+   shorter for free. */
+#wf-footrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  justify-content:space-between}
+#wf-footrow:empty{display:none}
+/* WHAT THE ROUTE DOES AFTER THE NEXT TURN — direction only, in the half of the
+   footer row that `Clear` was leaving empty. It reads as the continuation of
+   the manoeuvre line above it: `24 m, then left` / `and then right`. */
+#wf-then2{display:flex;align-items:center;gap:7px;min-width:0;order:-1;
+  font-size:var(--wf-line);font-weight:600;color:var(--wf-dim)}
+#wf-then2.hidden{display:none}
+/* ROUND 7: THE SECOND AMBER DISC, WHICH ROUND 6 MISSED BECAUSE ITS OWN GATE
+   ONLY LOOKED AT THREE CLASSES. Round 6's ruling was that `Walk it` is the only
+   filled or bordered thing in the feature — three 44 px rounded boxes in a row
+   are not three actions, they are an iOS segmented control — and it stripped
+   the panel and the border off `Show route` and `✕` to make that true. It
+   asserted the result over `.wf-act-go / .wf-act-show / .wf-act-clr`, a list
+   typed by hand, and `#wf-then2` is in the same row and is not on it.
+   `.wf-sturn` is shared with the itinerary, where a filled amber disc with a
+   dark halo is exactly right: it punches the thread that runs behind the list.
+   In the footer row there is no thread, and what is left is a glyph-and-label
+   pair wearing an amber fill 250 px from two glyph-and-label pairs that are
+   real buttons. `and then left` is a fact, so it is set like one. */
+#wf-then2 .wf-sturn{background:none;box-shadow:none;padding:0;
+  color:var(--wf-dim);width:var(--wf-then2-ic);height:var(--wf-then2-ic)}
+/* THREE THINGS DO NOT FIT ON 342 px, and when they do not, the warning wins.
+   Photographed walking 21 Rio -> WEL: the chained turn and the passing-period
+   chip filled the row and `Clear` wrapped to a line of its own, putting the bar
+   back at 227 px. `and then right` is a nicety; `Tight for a 15-minute passing
+   period` is the reason a student opened this at all. */
+#wf-verdict:not(:empty)+#wf-then2{display:none}
+#wf-verdict{font-size:11.5px;font-weight:700;letter-spacing:.01em;
+  padding:4px 8px;border-radius:7px;display:inline-block;
+  --wf-over:#ffb4a2;      /* both ends of the range over the period */
+  --wf-tight:#ffd79a}     /* the range crosses it */
+#wf-verdict:empty{display:none}
+#wf-verdict.over{color:var(--wf-over);background:rgba(255,120,90,.14);
+  box-shadow:inset 0 0 0 1px rgba(255,150,120,.3)}
+#wf-verdict.tight{color:var(--wf-tight);background:rgba(255,190,90,.13);
+  box-shadow:inset 0 0 0 1px rgba(255,190,90,.26)}
+
+/* THE PRIMARY ACTION, ON THE CLOSED BAR.
+   The camera never moves on its own, so without `?fit=1` the route this bar is
+   describing can be entirely off screen — and until now the only control that
+   framed it lived inside the card, behind a chevron. An answer whose subject is
+   not on screen, and whose "show me" is not on screen either, is not an answer.
+   `Show route` is the wide one and `Clear` is the narrow one, because one of
+   them is what you came for and the other is how you leave. */
+/* `margin-left:auto` and not the container's `justify-content`, because the
+   container has two children and sometimes one: `#wf-verdict:empty` removes
+   itself, and `space-between` with a single child puts that child on the LEFT.
+   Photographed while walking JES -> DKR — a route with nothing to warn about —
+   `Clear` sat alone in the bottom-left corner where the primary action lives.
+   The margin pins it right whether or not the warning is beside it. */
+#wf-acts{display:flex;gap:8px;flex:1 1 210px;margin-left:auto}
+#wf-acts.hidden{display:none}
+#wf-acts .wf-act{min-height:var(--touch-min);display:flex;align-items:center;
+  justify-content:center;gap:7px}
+/* THE ONE FILLED THING ON THE BAR. It used to be amber at 26 % over dark glass,
+   i.e. the same weight as the panel it sits on, and it is the control the whole
+   answer exists to offer. Solid accent with dark ink reads as a button at arm's
+   length in sunlight, and it is the same amber as the manoeuvre disc, so the
+   feature has exactly one filled colour and it always means "the thing to do". */
+/* ROUND 4: THE FILLED ONE IS `WALK IT`. `Show route` frames the line from
+   above, which is what every maps app on the phone already does; the thing
+   this app has that they do not is that you can stand on the pavement it just
+   drew — and no control anywhere put you there, so the whole walking readout
+   was unreachable from the interface. Three controls fit on 342 px only
+   because `Clear` gives up its word for the ✕ it always meant. */
+#wf-acts .wf-act-go{flex:1 1 auto;font-size:13px;
+  background:var(--wf-go-bg);border-color:var(--wf-go-edge);color:var(--wf-go-ink);
+  box-shadow:0 3px 13px rgba(255,190,90,.22)}
+#wf-acts .wf-act-go:hover{background:#ffd484;border-color:#ffe1a8}
+#wf-acts .wf-act-go .wf-act-walk{width:17px;height:17px}
+/* ── ROUND 6: ONE BOX ON THE BAR ────────────────────────────────────────────
+   Round 1's critic ran the blind comparison and this is what it came back
+   with: Citymapper's pre-walk sheet has exactly ONE action on it — a single
+   green GO pill — and ours had three, "three same-weight actions in one row",
+   "denser and more capable but not calmer, which was the brief".
+
+   Looked at, at 390 x 844, that is exactly right and the reason is not the
+   COUNT. It is that all three wore the same costume: three rounded 44 px
+   rectangles, each with a 1 px warm border and a lit panel behind it, sitting
+   in a row with 8 px between them. Three of those in a row is not three
+   actions, it is a SEGMENTED CONTROL — one widget with three equal cells, the
+   iOS shape that means "pick which of these you are in". That is the third
+   time this bar has accidentally drawn a stock phone control (see the rail,
+   twice) and the fix is the same as it was there: stop spending the shape.
+
+   So the border and the panel come off the two that are not the point.
+   `Walk it` keeps the fill, and it is now the ONLY filled or bordered thing in
+   the whole feature — `Show route` and the ✕ become what they always were,
+   words and a glyph you can tap. Nothing is hidden, nothing moves behind a
+   chevron, no label is lost: round 2 of this lane took `Show route` out from
+   behind the chevron precisely because the control that mattered was the one
+   you could not see, and it is still on the frame, still labelled, still
+   44 px of touch target. It just stops pretending to be the same kind of
+   thing as the answer. */
+#wf-acts .wf-act-show{flex:0 1 auto;
+  padding-left:var(--wf-ghost-pad);padding-right:var(--wf-ghost-pad);
+  background:none;border-color:transparent;
+  color:var(--wf-dim);font-weight:600;white-space:nowrap}
+#wf-acts .wf-act-show:hover{background:rgba(255,255,255,.07);color:var(--wf-ink)}
+#wf-acts .wf-act-show:focus-visible{border-color:var(--wf-edge)}
+/* THE WAY OUT IS A GLYPH. It was a 90 px box of the same dark grey as the
+   panel, and at that width it read as the second half of a two-button choice
+   rather than as a dismissal — the ✕ says "leave" in the width of a thumb and
+   gives the two real actions the other 60 px. */
+/* ROUND 6: AND IT IS A GLYPH WITH NOTHING AROUND IT. Same argument as
+   `.wf-act-show` above — a bordered 44 px square beside a bordered 44 px
+   rectangle beside a filled 44 px rectangle is one segmented control, and the
+   dismiss is the last thing on the bar that should be asking for a box. */
+#wf-acts .wf-act-clr{flex:0 0 auto;width:var(--touch-min);padding:0;
+  background:none;border-color:transparent;
+  color:var(--wf-dimmer);font-weight:600}
+#wf-acts .wf-act-clr:hover{background:rgba(255,255,255,.07);color:var(--wf-ink)}
+#wf-acts .wf-act-clr:focus-visible{border-color:var(--wf-edge-soft)}
+#wf-acts .wf-act-clr .wf-act-ic{width:14px;height:14px}
+.wf-act-ic{width:15px;height:15px;flex:none}
+/* While you are walking it, being put back at the START of it is not what you
+   want, so `Walk it` goes. */
+body.wf-live #wf-acts{justify-content:flex-end;flex:0 0 auto}
+body.wf-live #wf-acts .wf-act-go,body.wf-live #wf-acts .wf-act-show{display:none}
+body.wf-live #wf-acts .wf-act-clr{min-height:36px;height:36px}
+/* ROUND 5: AND THERE HAS TO BE A WAY BACK UP.
+   Round 4 hid `Show route` here too, on the reading that framing the route from
+   above is not what you want while standing on it — which left the ✕ as the
+   ONLY control on the walking bar, and the ✕ deletes the answer. Photographed
+   at 390 x 844 on both walking routes: one button, and tapping it strands you
+   at eye level in the middle of campus with no route and both fields to type
+   again. `Walk it` and `Show route` are the pair every navigation app has —
+   the one that puts you on the ground and the one that lifts you out — and
+   hiding the second one turned a toggle into a trapdoor. */
+body.wf-live #wf-root.wf-out #wf-acts .wf-act-show{display:flex}
+body.wf-live #wf-root.wf-out #wf-acts .wf-act-show{min-height:36px;height:36px;
+  font-size:12.5px;padding-left:11px;padding-right:11px}
+/* THREE THINGS STILL DO NOT FIT ON 340 px, and the same rule decides it as in
+   round 3: the warning wins. MEASURED on the shipped build at 390 x 844, not
+   guessed — the footer's content box is 340 px, the warning chip is 219 px, and
+   the actions are 96 px as glyphs or 165 px with the word on:
+
+     219 + 8 +  96  = 323   one row, footer 36 px, bar 194.6 px
+     219 + 8 + 165  = 392   two rows, footer 67 px, bar 225.6 px
+
+   so the label costs 31 px of an 844 px screen on exactly the routes that
+   already have the most to say. It comes off, and the reason that is not a
+   mystery-glyph is that THE GLYPH WAS TAUGHT ONE STATE EARLIER: the way you
+   got here is by tapping `Walk it` on a bar where this same frame glyph was
+   sitting next to the words `Show route`. It also keeps its title and its
+   aria-label. To stop the two dark squares reading as a matched pair, the way
+   OUT takes the warm edge and the accent ink and the DISMISS stays grey — they
+   are not the same kind of thing and should not look it. */
+body.wf-live #wf-root.wf-out #wf-verdict:not(:empty) ~ #wf-acts .wf-act-show span{display:none}
+body.wf-live #wf-root.wf-out #wf-verdict:not(:empty) ~ #wf-acts .wf-act-show{
+  width:var(--touch-min);padding:0}
+/* ROUND 6: AND THE WAY OUT IS GHOST TOO, FOR A REASON THAT ONLY SHOWS UP
+   WHILE WALKING. It wore the accent ink on a warm-edged panel, which put a
+   SECOND amber object on the walking bar — and the first one is `24 m`, the
+   distance to the next turn, which is the whole reason the bar is on screen.
+   Photographed at 390 x 844 on JES -> WEL: the eye is pulled to the button,
+   not to the number. There is one amber thing on this bar at a time and it is
+   never a control you are being asked to leave by. */
+body.wf-live #wf-root.wf-out #wf-acts .wf-act-show{color:var(--wf-dim);
+  background:none;border-color:transparent}
+body.wf-live #wf-root.wf-out #wf-acts .wf-act-show:hover{
+  background:rgba(255,255,255,.07);color:var(--wf-ink)}
+/* On a failure there is no route to frame and none to stand on, so only the
+   way out is left. */
+#wf-acts.fail{justify-content:flex-end}
+#wf-acts.fail .wf-act-go,#wf-acts.fail .wf-act-show{display:none}
+#wf-footrow{margin-top:9px}
+body.wf-live #wf-footrow{margin-top:6px}
+
+/* THE WALKING READOUT. Only on screen when the view is actually on the route
+   (js/wayfind.js §7d), and when it is, the whole-journey figures demote to a
+   footnote rather than disappearing — you still want to know what the whole
+   walk was while you are halfway through it. */
+/* The walking readout keeps the NARROW clearance, because `.wf-chev-lab` is
+   hidden while walking and the chevron is back to a 28 px disc. */
+#wf-live{display:flex;align-items:center;gap:11px;padding-right:26px}
+.wf-arrow{width:var(--wf-arrow);height:var(--wf-arrow);flex:none;border-radius:50%;
+  display:grid;place-items:center;color:#1b1204;background:var(--wf-accent);
+  box-shadow:0 3px 14px rgba(255,190,90,.34)}
+.wf-arrow svg{width:24px;height:24px;transition:transform .18s ease-out}
+.wf-livetxt{min-width:0;flex:1}
+/* THE NEXT THING THAT HAPPENS, AND WHICH WAY IT GOES.
+   Walking, the question is not how long the whole walk is — it is how far to
+   the next decision and which way that decision turns. So the distance to the
+   turn takes the large size the whole-journey minutes had, `, then left` sits
+   beside it at reading size, and the journey figures move to the line below. */
+/* NO GAP HERE, AND IT IS NOT A NIT. `.wf-then` is the string `, then left` —
+   the comma belongs to the distance in front of it — so a 4 px flex gap put a
+   space before the comma and the bar read `13 m , then left` on every frame of
+   every walking shot round 2 took. The two spans are one sentence; the space
+   inside `, then` is the only one it gets. */
+.wf-next{display:flex;align-items:baseline;gap:0;line-height:1.05;min-width:0}
+.wf-next .wf-big{font-size:var(--wf-big);font-weight:700;color:var(--wf-accent);
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em;flex:none}
+.wf-next .wf-then{font-size:var(--wf-then);font-weight:700;color:var(--wf-ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-figs{display:flex;align-items:baseline;gap:5px;line-height:1.1;margin-top:4px;
+  flex-wrap:wrap}
+.wf-figs .wf-mins{font-size:var(--wf-fact);font-weight:700;color:var(--wf-ink);
+  font-variant-numeric:tabular-nums}
+.wf-figs .wf-unit{font-size:var(--wf-unit);font-weight:600;color:var(--wf-dim)}
+.wf-figs .wf-mid{color:var(--wf-dimmer)}
+.wf-figs .wf-dim2{font-size:var(--wf-small);color:var(--wf-dimmer);
+  text-transform:uppercase;letter-spacing:.13em;font-weight:700}
+.wf-liveline{font-size:var(--wf-line);color:rgba(248,234,208,.82);margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ROUND 4: WALKING, THE WHOLE-ROUTE FIGURE LINE COMES OFF THE FRAME.
+   Rounds 2 and 3 demoted it to footnote size rather than dropping it, on the
+   reasoning that you still want to know what the whole walk was while you are
+   halfway through it. Photographed at 390 x 844 walking 21 Rio -> WEL, that
+   put THREE numbered lines on a 366 px bar — `27 m, then left`, then `8–12 min
+   walk REMAINING · 630 m`, then `12-18 min walk · 1.0 km · Stairs: 3 sets` —
+   i.e. two complete trip summaries stacked, and the second one measured a walk
+   you are no longer taking. `Stairs: 3 sets` counts sets already behind you.
+   The row it vacates now carries what is AHEAD (see #wf-key.ahead), which is
+   the same fact re-asked of the part of the route that is left.
+
+   `display:none`, NOT a deletion: `#wf-headline`.textContent is what the
+   honesty gates and every verify script assert on, and it is unchanged. */
+body.wf-live #wf-headline{display:none}
+
+#wf-card{margin-top:10px;padding-top:10px;border-top:1px solid var(--wf-edge-soft);
+  text-align:left;font-size:11.5px;line-height:1.5;
+  /* the card must never run off the bottom of a phone: it gives up height and
+     scrolls inside itself rather than pushing the bar's own actions off screen */
+  max-height:calc(100vh - var(--wf-card-clear,220px));overflow-y:auto}
+/* Only when there IS more — see fitCard(). A card that fits keeps a hard edge. */
+#wf-card.scrolls{-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent);
+  mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent)}
+/* THE PROBE. A custom property holding `calc(max(...))` reads back through
+   getComputedStyle as its own token stream, not as a number, so the only way to
+   learn what `--drive-clear` is worth in pixels is to give something that
+   height and measure it. Added, measured and removed inside one frame, and only
+   when the details card is open. */
+.wf-probe{position:absolute;left:-9999px;top:0;width:1px;height:var(--drive-clear);
+  pointer-events:none;visibility:hidden}
+.wf-c{margin:5px 0}
+.wf-dim{color:var(--wf-dimmer);font-size:var(--wf-small);line-height:1.45}
+
+/* ── THE ITINERARY — the same walk, as a list ─────────────────────────────
+   The rail above says WHERE the things on this route are. This says WHAT they
+   are, in order, and it is the one shape every walking-directions screen in the
+   world has that this bar did not.
+
+   Every mark in the gutter is an element that already exists somewhere else in
+   this feature: the two ends are `.wf-mk-a` / `.wf-mk-b`, the same tick and ring
+   the origin and destination lines wear and the same two the rail is capped
+   with; the staircases and crossings are `.wf-pip` in the same kind classes the
+   rail draws. So a colour or a shape changed once above moves the bar, the rail
+   AND the list together, and cannot be left behind in one of the three.
+
+   The thread is drawn by the GUTTER, not by the rows: `.wf-si` is stretched to
+   the row's full height and paints a 1.5 px line down its centre, so the list
+   is one continuous walk however tall a row grows when its text wraps. The two
+   ends stop the thread at their own mark rather than running past it. */
+#wf-steps{margin:1px 0 9px}
+.wf-steps-h{font-size:9.5px;font-weight:700;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--wf-dimmer);margin-bottom:6px}
+.wf-step{display:flex;align-items:center;gap:9px;min-height:var(--wf-step-h)}
+.wf-si{flex:none;width:var(--wf-mk-w);align-self:stretch;position:relative;
+  display:flex;align-items:center;justify-content:center}
+.wf-si::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1.5px;
+  margin-left:-.75px;background:var(--wf-thread)}
+.wf-step-start .wf-si::after{top:50%}
+.wf-step-end .wf-si::after{bottom:50%}
+.wf-si>*{position:relative;z-index:1}
+/* A LEG IS A DISTANCE AND NOTHING ELSE. No verb in front of it: the whole list
+   is a walk, and `Walk 180 m` on every other row is a word the reader already
+   knows on a bar with no room for it. */
+.wf-step-leg .wf-sx{font-size:var(--wf-small);color:var(--wf-dimmer);
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.wf-sx{min-width:0;font-size:var(--wf-step);line-height:1.3;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:rgba(248,234,208,.88)}
+.wf-sname{font-weight:700;color:var(--wf-ink)}
+.wf-sdoor{color:var(--wf-dim);font-weight:500;margin-left:9px}
+.wf-sturn{width:var(--wf-step-ic);height:var(--wf-step-ic);color:var(--wf-accent);
+  background:rgba(255,198,99,.15);border-radius:50%;padding:2px;box-sizing:border-box;
+  box-shadow:0 0 0 2.5px rgba(22,14,4,.96)}
+/* The pips and the end marks are absolutely placed by the rail they normally
+   live on; in the gutter they are centred instead. Nothing else about them
+   changes, which is the point. */
+#wf-steps .wf-pip{position:static;margin:0;flex:none;
+  box-shadow:0 0 0 3.5px rgba(22,14,4,.96)}   /* punches the thread behind it */
+#wf-steps .wf-mk{width:13px;height:13px}
+#wf-steps .wf-mk::before{left:50%;transform:translateX(-50%)}
+/* Walking, the card is not what you are reading — the manoeuvre is. The list
+   stays available, it just stops being the first thing under the fold. */
+body.wf-live .wf-steps-h{margin-bottom:4px}
+.wf-via{color:#bfe4ff}
+.wf-toggle{display:flex;align-items:center;gap:9px;margin:10px 0 3px;cursor:pointer;
+  font-weight:700;min-height:30px}
+.wf-toggle input{accent-color:#f5a623;cursor:pointer;width:17px;height:17px}
+.wf-chips{display:flex;flex-wrap:wrap;gap:6px;margin:11px 0 4px}
+.wf-chip{background:rgba(255,255,255,.06);border:1px solid var(--wf-edge);
+  border-radius:999px;color:inherit;font:inherit;font-size:11.5px;padding:6px 13px;cursor:pointer}
+.wf-chip:hover{background:rgba(245,166,35,.24)}
+.wf-chip.on{background:rgba(245,166,35,.38);color:#fff;border-color:rgba(245,166,35,.6)}
+.wf-chip-x{display:grid;place-items:center;width:30px;height:30px;padding:0;border-radius:50%}
+.wf-chip-x svg{width:11px;height:11px}
+.wf-acts{display:flex;gap:8px;margin-top:11px}
+.wf-act{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--wf-edge);
+  border-radius:10px;color:var(--wf-ink);font:inherit;font-size:12px;font-weight:700;
+  padding:10px 6px;cursor:pointer;min-height:38px}
+.wf-act:hover{background:rgba(245,166,35,.26)}
+.wf-act-go{background:rgba(245,166,35,.26);border-color:rgba(245,166,35,.5);color:#fff3d4}
+.wf-act-go:hover{background:rgba(245,166,35,.44)}
+
+/* ══ THE SCHEDULE IMPORT ═══════════════════════════════════════════════════
+   The screen a student adds their class schedule on — three routes in, one
+   panel, and a second screen that says what landed and what did not. The code
+   and the argument for every choice are in js/wayfind.js §9.
+
+   IT IS THE SHEET'S TWIN, NOT A NEW SURFACE. Same glass, same radius, same
+   shadow, same corner of the screen, same "give up height at the bottom, never
+   at the top" rule — so on a phone it lands exactly where the search panel it
+   replaces was, and the joystick and the time slider are still reachable with
+   it open. Every size and colour below is either a token off #wf-root or a
+   `--wf-imp-*` declared here (CLAUDE.md rule 11); nothing is a number in a
+   rule body that cannot be found by name. */
+#wf-imp{
+  --wf-imp-step:11px;       /* the numbered instructions above a control */
+  --wf-imp-n:15px;          /* the little numeral beside each of them */
+  --wf-imp-lab:9.5px;       /* the uppercase label over a field */
+  --wf-imp-row:12.5px;      /* a result row's first line */
+  --wf-imp-row2:10.5px;     /* ...and its second, the when/why line */
+  --wf-imp-gap:9px;         /* the rhythm of the body */
+  /* THE TWO VERDICT COLOURS. Green is not in this feature's palette anywhere
+     else and it is not being introduced here: a placed class gets the same
+     warm ink everything else that worked gets, and only the FAILURE is
+     coloured, because the failure is the thing the eye has to find. */
+  --wf-imp-bad:#ffb4a0;
+  --wf-imp-bad-bg:rgba(255,120,80,.10);
+  --wf-imp-bad-edge:rgba(255,140,100,.24);
+  position:absolute;top:68px;left:16px;z-index:31;width:344px;
+  max-width:calc(100vw - 32px);max-height:calc(100vh - 110px);
+  background:var(--wf-glass-solid);backdrop-filter:blur(14px) saturate(1.1);
+  border:1px solid rgba(255,190,90,.18);border-radius:var(--wf-radius);
+  box-shadow:var(--wf-shadow);color:var(--wf-ink);font-size:12.5px;
+  overflow:hidden;display:flex;flex-direction:column}
+#wf-imp.hidden,#wf-imp-tabs.hidden{display:none}
+#wf-imp-head{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 10px 8px 14px;border-bottom:1px solid var(--wf-edge-soft);flex:none}
+#wf-imp-title{font-size:11px;font-weight:700;letter-spacing:.17em;
+  text-transform:uppercase;color:var(--wf-dim)}
+#wf-imp-close{background:none;border:none;color:inherit;opacity:.6;cursor:pointer;
+  width:30px;height:30px;display:grid;place-items:center;padding:0;border-radius:8px}
+#wf-imp-close svg{width:15px;height:15px}
+#wf-imp-close:hover{opacity:1;background:rgba(255,255,255,.07)}
+
+/* THE THREE ROUTES IN. A segmented control, because they are three views of
+   one job and not three jobs — a student picks where their schedule already
+   lives, not what they want to do. Three stacked panels was the other option
+   and it does not fit on a 390 px phone without a scroll before the first
+   control. */
+#wf-imp-tabs{display:flex;gap:4px;padding:8px 10px;flex:none;
+  border-bottom:1px solid var(--wf-edge-soft)}
+.wf-imp-tab{flex:1;min-width:0;background:rgba(255,255,255,.05);
+  border:1px solid var(--wf-edge-soft);border-radius:9px;color:var(--wf-dim);
+  font:inherit;font-size:11.5px;font-weight:700;letter-spacing:.04em;
+  padding:0 6px;height:32px;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-imp-tab:hover{background:var(--wf-hot);color:#fff3d4}
+.wf-imp-tab.on{background:rgba(245,166,35,.24);border-color:rgba(245,166,35,.5);
+  color:#fff3d4}
+
+/* THE BODY IS THE ONLY CHILD THAT YIELDS HEIGHT, same rule as #wf-sheet's
+   result list — so the head, the tabs, the action and the privacy line are
+   whole at any panel height and the instructions scroll instead. */
+#wf-imp-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:11px 14px 4px}
+
+/* ── AN EDGE THAT IS CUT MUST NOT LOOK LIKE AN EDGE THAT IS FINISHED ───────
+   Found in two photographs of a working build, not in the code — the argument
+   and both frames are written up at `impShade` in js/wayfind.js §9. Short
+   version: the result screen showed one of six placed classes and clipped the
+   rest against a crisp border with nothing to say so, and the error screen's
+   deliberate scroll-to-the-end landed mid-line and read as a rendering fault.
+
+   A MASK, NOT A GRADIENT OVERLAY, and that is the whole reason this is three
+   lines instead of two absolutely-positioned children. `#wf-imp-body` is a
+   scroller inside a translucent panel over a live 3D city: an overlay would
+   have to be painted in the panel's own glass colour to hide the text under
+   it, and that colour is `--wf-glass-solid` composited over whatever the map
+   is doing that second — it is not a colour this stylesheet can name. A mask
+   removes the pixels instead of covering them, so the fade is correct over any
+   scene, at any time of day, and stays correct if the glass is ever retuned.
+
+   The classes are put on by `impShade` off measured scroll geometry. An end
+   with nothing past it keeps its hard edge on purpose: if both ends always
+   faded, the fade would carry no information. */
+#wf-imp-body{
+  /* One line of the smallest type on this screen is about 15 px, so the fade
+     is deep enough that a clipped line is unmistakably ghosted and shallow
+     enough that the line below it is still fully legible. */
+  --wf-imp-fade:16px;
+}
+#wf-imp-body.cut-top{
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--wf-imp-fade));
+  mask-image:linear-gradient(to bottom,transparent 0,#000 var(--wf-imp-fade));
+}
+#wf-imp-body.cut-bot{
+  -webkit-mask-image:linear-gradient(to top,transparent 0,#000 var(--wf-imp-fade));
+  mask-image:linear-gradient(to top,transparent 0,#000 var(--wf-imp-fade));
+}
+#wf-imp-body.cut-top.cut-bot{
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--wf-imp-fade),
+    #000 calc(100% - var(--wf-imp-fade)),transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 var(--wf-imp-fade),
+    #000 calc(100% - var(--wf-imp-fade)),transparent 100%);
+}
+.wf-imp-steps{display:flex;flex-direction:column;gap:7px;margin-bottom:11px}
+.wf-imp-step{display:flex;align-items:flex-start;gap:8px}
+.wf-imp-n{flex:none;width:var(--wf-imp-n);height:var(--wf-imp-n);border-radius:50%;
+  background:rgba(255,198,99,.18);color:var(--wf-accent);
+  font-size:9.5px;font-weight:700;display:grid;place-items:center;margin-top:1px}
+.wf-imp-t{font-size:var(--wf-imp-step);line-height:1.5;color:var(--wf-dim)}
+.wf-imp-lab{font-size:var(--wf-imp-lab);font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--wf-dimmer);margin-bottom:5px}
+.wf-imp-in{width:100%;box-sizing:border-box;background:rgba(255,255,255,.055);
+  border:1px solid var(--wf-edge-soft);border-radius:10px;color:#fff6e2;
+  font:inherit;font-size:14px;padding:0 11px;height:40px;outline:none;
+  transition:border-color .12s,background .12s}
+.wf-imp-in::placeholder{color:rgba(248,234,208,.30);font-size:11px;letter-spacing:0}
+.wf-imp-in:focus{border-color:rgba(245,166,35,.55);background:rgba(255,255,255,.09)}
+.wf-imp-ta{height:auto;min-height:82px;padding:9px 11px;line-height:1.5;
+  resize:vertical;font-size:12.5px}
+.wf-imp-ta::placeholder{font-size:11px;line-height:1.5}
+.wf-imp-hint{font-size:10px;color:var(--wf-dimmer);line-height:1.45;margin-top:5px}
+/* THE SEPARATOR BETWEEN TWO WAYS OF DOING THE SAME THING. A word on a rule,
+   because two controls stacked with nothing between them read as two steps. */
+.wf-imp-or{display:flex;align-items:center;gap:8px;margin:11px 0;
+  font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--wf-dimmer)}
+.wf-imp-or::before,.wf-imp-or::after{content:"";flex:1;height:1px;
+  background:var(--wf-edge-soft)}
+.wf-imp-file-btn{display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;box-sizing:border-box;min-height:var(--touch-min);
+  background:rgba(255,255,255,.06);border:1px dashed var(--wf-edge);
+  border-radius:10px;color:var(--wf-ink);font:inherit;font-size:12.5px;
+  font-weight:700;padding:10px;cursor:pointer}
+.wf-imp-file-btn:hover{background:rgba(245,166,35,.22)}
+.wf-imp-ic{width:16px;height:16px;flex:none;color:var(--wf-accent)}
+#wf-imp-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+/* WHAT WENT WRONG BEFORE A SINGLE ROW WAS READ — a blocked fetch, a .zip, an
+   empty box. It sits under the controls it is about, not in a toast, because
+   the fix is one of those controls. */
+#wf-imp-errslot{flex:none;padding:0 14px}
+#wf-imp-errslot:not(:empty){padding:11px 14px 0}
+.wf-imp-err{display:flex;align-items:flex-start;gap:8px;
+  padding:9px 10px;border-radius:10px;background:var(--wf-imp-bad-bg);
+  border:1px solid var(--wf-imp-bad-edge);color:var(--wf-imp-bad);
+  font-size:11px;line-height:1.5}
+.wf-imp-err-ic{width:15px;height:15px;flex:none;margin-top:1px}
+
+/* ══ WHAT HAPPENED ═════════════════════════════════════════════════════════ */
+.wf-imp-sum{margin-bottom:11px}
+.wf-imp-count{font-size:17px;font-weight:700;letter-spacing:-.01em;color:var(--wf-ink)}
+.wf-imp-src{font-size:var(--wf-imp-row2);color:var(--wf-dimmer);margin-top:2px}
+.wf-imp-list{display:flex;flex-direction:column}
+.wf-imp-row{display:flex;align-items:flex-start;gap:9px;padding:8px 0;
+  border-top:1px solid var(--wf-edge-soft)}
+.wf-imp-row:first-child{border-top:none}
+.wf-imp-row-ic{width:14px;height:14px;flex:none;margin-top:2px}
+.wf-imp-row.ok .wf-imp-row-ic{color:var(--wf-accent)}
+.wf-imp-row.bad .wf-imp-row-ic{color:var(--wf-imp-bad)}
+.wf-imp-mid{flex:1;min-width:0}
+.wf-imp-l1{display:flex;align-items:baseline;gap:7px;min-width:0}
+/* THE CODE IS THE SUBJECT OF THE ROW — it is what the router speaks and what
+   the student typed. Same weight and same amber as .wf-code in the result
+   list, so the two lists read as one vocabulary. */
+.wf-imp-code,.wf-imp-rawtxt{font-weight:700;letter-spacing:.06em;color:#ffcf7a;
+  font-size:var(--wf-imp-row);flex:none}
+.wf-imp-rawtxt{color:var(--wf-imp-bad)}
+.wf-imp-bname{font-size:var(--wf-imp-row);color:var(--wf-ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-imp-rtitle{font-size:var(--wf-imp-row2);color:var(--wf-dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-imp-room{font-size:var(--wf-imp-row2);color:var(--wf-dimmer);flex:none;
+  margin-left:auto;padding-left:6px}
+/* ONE LINE, WITH THE ELLIPSIS AT THE FAR END — and which half is at the far
+   end is decided in js (§9, impRenderResult): the days and the time lead, the
+   course title trails, so a truncation eats the thing the student already
+   knows by heart rather than the thing that makes the row a class. */
+.wf-imp-l2{font-size:var(--wf-imp-row2);color:var(--wf-dim);line-height:1.45;
+  margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ...EXCEPT THE REASON, which is the one sentence on this screen a student has
+   to read all of. It wraps. */
+.wf-imp-l2.why{color:var(--wf-imp-bad);opacity:.92;white-space:normal}
+.wf-imp-sec{margin:14px 0 4px;font-size:var(--wf-imp-lab);font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--wf-dimmer)}
+.wf-imp-sec.bad{color:var(--wf-imp-bad);opacity:.85;margin-top:11px}
+/* `Show N more` — a REAL control now, not a caption. It was `+ N more` in
+   dimmer type with no handler, so the six placed classes on screen and the
+   three off it were the same news presented as different news. A thumb has to
+   be able to hit it, so it takes --touch-min like every other target in this
+   feature, and it looks like a control (border, hover) rather than like the
+   dimmed footnote it used to be mistaken for. Full width, because a lone
+   short button under a list of full-width rows reads as belonging to the last
+   row rather than to the list. */
+.wf-imp-more{display:block;width:100%;margin-top:8px;min-height:var(--touch-min);
+  background:rgba(255,255,255,.05);border:1px solid var(--wf-edge-soft);
+  border-radius:9px;color:var(--wf-dim);font:inherit;font-size:var(--wf-imp-row2);
+  font-weight:700;letter-spacing:.06em;cursor:pointer;padding:0 10px}
+.wf-imp-more:hover{background:var(--wf-hot);color:var(--wf-ink)}
+
+/* THE ACTION ROW. `Import` / `Use these N` is the one filled control on the
+   screen, the same amber `Walk it` is on the answer bar — this feature has
+   exactly one filled thing at a time and it always means "the thing to do". */
+#wf-imp-foot{display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-top:1px solid var(--wf-edge-soft);flex:none}
+#wf-imp-foot:empty{display:none}
+.wf-imp-go{flex:1;min-height:var(--touch-min);background:var(--wf-go-bg);
+  border:1px solid var(--wf-go-edge);border-radius:10px;color:var(--wf-go-ink);
+  font:inherit;font-size:13px;font-weight:700;padding:10px;cursor:pointer}
+.wf-imp-go:hover{background:var(--wf-go-edge)}
+.wf-imp-go:disabled{opacity:.55;cursor:default}
+.wf-imp-back{flex:none;min-height:var(--touch-min);background:none;
+  border:1px solid var(--wf-edge);border-radius:10px;color:var(--wf-dim);
+  font:inherit;font-size:12px;font-weight:700;padding:10px 14px;cursor:pointer}
+.wf-imp-back:hover{background:rgba(255,255,255,.07);color:var(--wf-ink)}
+.wf-imp-none{flex:1;font-size:11px;color:var(--wf-dimmer);line-height:1.45}
+.wf-imp-note{padding:8px 14px 10px;border-top:1px solid rgba(255,190,90,.11);
+  font-size:9.5px;color:var(--wf-dimmer);line-height:1.55;flex:none}
+
+/* THE DOOR IN, in the search panel. A ROW and not a chip: the four chips above
+   it fill a field, this one changes screens, and mixing the two in one strip
+   is how a thumb opens the wrong thing. */
+#wf-imp-entry{display:flex;align-items:center;gap:10px;width:100%;
+  box-sizing:border-box;min-height:var(--touch-min);
+  background:rgba(245,166,35,.10);border:none;
+  border-top:1px solid var(--wf-edge-soft);
+  color:var(--wf-ink);font:inherit;text-align:left;padding:9px 12px;
+  cursor:pointer;flex:none}
+#wf-imp-entry:hover{background:rgba(245,166,35,.20)}
+.wf-imp-entry-ic{width:17px;height:17px;flex:none;color:var(--wf-accent)}
+.wf-imp-entry-t{flex:1;min-width:0}
+.wf-imp-entry-lab{display:block;font-size:12.5px;font-weight:700}
+.wf-imp-entry-sub{display:block;font-size:9.5px;color:var(--wf-dimmer);
+  margin-top:1px;line-height:1.4}
+.wf-imp-entry-go{width:14px;height:14px;flex:none;color:var(--wf-dimmer)}
+
+/* ?clip=1 — the chrome is UI, the ribbon is scene. So the panel, the button and
+   the bar go and the route stays: ?clip=1&from=JES&to=WEL&fit=1 is a recordable
+   shot of a route with nothing on screen but the city. `?autopilot=1` and
+   `?sliderdemo=1` both add `.clip` in index.html's head script, so all three
+   recording surfaces are covered by this one rule — and every element this
+   feature has ever added is a CHILD of one of these three, which is why the
+   rule has not had to grow as the bar did.
+
+   #wf-imp IS THE ONE EXCEPTION TO THAT LAST SENTENCE AND IT IS NAMED HERE ON
+   PURPOSE. The import screen is a fourth child of #wf-root, not a child of the
+   three above — a panel that has to be able to cover the sheet cannot be
+   inside it. So it is listed. If a fifth ever appears, list that too: the
+   comment claiming the rule never has to grow is what let this one nearly ship
+   visible in a recording. */
+.clip #wf-button,.clip #wf-sheet,.clip #wf-pill,.clip #wf-imp{display:none!important}
+/* ...and with the chrome hidden the title pill must come back for nobody, so
+   the #hud override above is undone too — .clip already hides #hud. */
+
+@media(prefers-reduced-motion:reduce){
+  #wf-chev,.wf-arrow svg{transition-duration:.01ms}
+}
+
+@media(max-width:640px){
+  /* ── QUEUE Z8: THE SHEET STOPS ABOVE THE JOYSTICK ────────────────────────
+     It used to be `bottom:0; max-height:62vh`, which on a 393x852 phone put it
+     over y324-852 while #joystick-zone lives at y682-782 and its BOOST button
+     reaches to about y650. The primary control of a 3D city was underneath the
+     search panel.
+
+     The sheet keeps its TOP edge exactly where it was — so nothing new can
+     collide with #tod-panel on the right — and gives up height at the bottom
+     instead, which is only possible because #wf-sheet is a flex column and the
+     result list is the child that yields. The joystick stays visible and
+     touchable with the sheet open; nothing is hidden to make room.
+
+     The clearance used to be a hand-computed `--wf-joy-clear:218px` with the
+     note "if the stick or the BOOST button moves, this is the one line to
+     move". BOOST duly moved (QUEUE Y10 item 3, to the opposite edge), so the
+     line is now `--drive-clear` off :root, which is a max() over both controls
+     and cannot go stale the same way.
+
+     --wf-tod-clear is the same idea on the other axis: #tod-panel sits on the
+     right edge and a full-width sheet ran straight under it. 8 px right inset
+     + the panel + 8 px of air; the panel is --touch-min wide plus its own 7 px
+     of padding either side, so it grew with the play button and this grew with
+     it. */
+  /* ── SI4: 62vh WAS RIGHT FOR A SHEET WITH 279 px IN IT ───────────────────
+     The 62 was measured when this sheet held a head, two fields, the examples
+     and a two-line footer — 279 px of content under a 337 px cap, with room
+     to spare. Then the schedule round appended three more rows to it
+     (`#wf-day-btn`, `#wf-imp-entry` and the privacy panel inside `.wf-foot`)
+     and the content went to 494 px. Under `overflow:hidden` that put 157 px
+     below the fold on a 390x844 phone, and what was in those 157 px was the
+     privacy line, the Delete button and the OpenStreetMap credit. A student on
+     a phone could not reach the control that deletes their class schedule.
+     That is the promise the feature makes, so this is a defect and not a
+     matter of taste.
+
+     --wf-sheet-vh IS THE ONE LINE TO MOVE. 84vh is not a new number: it is the
+     ceiling `#wf-imp` below already uses, and the reasoning under it (the top
+     edge must not rise above ~y120, where #wf-button and the right-hand
+     column stack) applies unchanged, because the two panels swap places on a
+     tap and land in the same slot. Measured on the phone Simeon judges from:
+     84vh - --drive-clear = 523 px against 494 px of content, so the sheet
+     sizes to its content at y164-658 and nothing is cut. The bottom edge does
+     not move at all, so QUEUE Z8's rule — the sheet stops above the joystick —
+     is untouched.
+
+     AND overflow-y:auto UNDER IT, which is the part that cannot go stale. A
+     taller sheet fixes today's 390x844; a shorter phone (a 667 px SE puts the
+     cap at 374 px) or the next row somebody appends would put the same
+     controls back under the fold with no way to reach them. #wf-list is still
+     the flex child that yields first, so this scroller only ever engages once
+     even the fixed chrome will not fit — and when it does, the Delete button
+     is a swipe away instead of gone. overflow-x stays hidden, so the rounded
+     corners still clip. */
+  #wf-sheet{--wf-tod-clear:calc(8px + var(--touch-min) + 14px + 8px);
+    --wf-sheet-vh:84vh;
+    top:auto;bottom:var(--drive-clear);left:8px;right:var(--wf-tod-clear);width:auto;
+    max-height:calc(var(--wf-sheet-vh) - var(--drive-clear));border-radius:16px;
+    overflow-y:auto;overscroll-behavior:contain}
+  /* AND THE WAY OUT DOES NOT SCROLL AWAY WITH IT. The moment a panel scrolls,
+     its close button is a thing that can leave the screen, and a dialog whose
+     ✕ has scrolled off is worse than one that clips a credit line. The head is
+     49 px and it is the whole of what stays. It needs its own background
+     because the sheet's is a backdrop-filter on the sheet, not on its children,
+     so a transparent sticky head would have the rows sliding visibly under the
+     title. */
+  #wf-sheet>#wf-head{position:sticky;top:0;z-index:2;background:var(--wf-glass-solid)}
+  /* THE IMPORT SCREEN LANDS WHERE THE SHEET DOES, and it has to be the same
+     rule and not a similar one: the two swap places on a tap, so any
+     difference between them is a jump on the frame. Same inset off the drive
+     controls, same clearance from #tod-panel on the right, same "give up
+     height at the bottom" — it just gets more of it, because a schedule's
+     result list is longer than a search's and the body is the child that
+     scrolls. */
+  #wf-imp{--wf-tod-clear:calc(8px + var(--touch-min) + 14px + 8px);
+    top:auto;bottom:var(--drive-clear);left:8px;right:var(--wf-tod-clear);
+    width:auto;max-width:none;
+    /* 84vh, MEASURED, NOT PICKED. At 74 the panel ran y219–y658 on a 390 x 844
+       phone and both the Google hint line and Apple's second control were
+       below the fold with no scroll affordance to say so — photographed. The
+       ceiling is what is above it: #wf-button ends at y60 and the right-hand
+       column stacks a second button to about y112, so the top edge must not
+       come above ~y120. 84vh − --drive-clear puts it at y135. Any higher and
+       this panel is the thing that collides with the buttons, which is the
+       exact defect QUEUE Z7 spent a round fixing for #wf-pill. */
+    max-height:calc(84vh - var(--drive-clear));border-radius:16px}
+  .wf-imp-in{font-size:16px}      /* iOS zooms a focused field under 16 px */
+  .wf-imp-ta{font-size:16px}
+  .wf-imp-tab{height:var(--touch-min)}
+  #wf-list{max-height:none;flex:1 1 auto}
+  .wf-row input{font-size:16px}   /* iOS zooms a focused field under 16 px */
+  /* A RESULT ROW IS A THUMB TARGET. At 34 px it was under the size this
+     stylesheet's own --touch-min calls "the smallest target a thumb reliably
+     hits", on the one control in the feature you have to hit correctly to
+     avoid being routed to the wrong building. The list is the flex child that
+     yields, so the taller rows cost the sheet no height — they scroll. */
+  .wf-item{padding:12px 14px;min-height:var(--touch-min)}
+  .wf-eg{padding:8px 12px}
+
+  /* ── QUEUE Z7: THE ANSWER COLUMN WAS 197 px AND COULD NEVER BE WIDER ─────
+     `left:50%` makes the shrink-to-fit available width `100% - 50%`, so on a
+     393 px screen the bar could never exceed 196.5 px however generous its
+     max-width was — the `max-width:calc(100vw - 32px)` that used to live here
+     never once bound. The headline wrapped to two lines and `Show route`
+     wrapped inside its own button. Pinning both edges and dropping the
+     translate gives the whole width, and the bar is centred because its two
+     margins are equal, not because it was pushed.
+
+     AND IT DROPS BELOW THE BUTTONS, which is the other half of the same fix and
+     was measured rather than guessed. The first attempt kept the bar in the
+     title's row and reserved 52 px gutters so the words could not run under
+     #wf-button (16..60) or #gfx-button/#fb-button (343..377) — and that put the
+     headline straight back onto two lines, which is the defect Z7 is about.
+     There is not enough width in that row for both, and a full-width bar with
+     three buttons sitting on it is one bad frame away from a collision. So the
+     answer takes the row BELOW them, and it gets the whole width with no
+     gutters. `body.wf-routed` already hides #hud, so nothing else wants it.
+
+     WHICH ROW IS "BELOW THEM" WAS WRONG BY ONE BUTTON (measured 2026-08-16 on
+     the merged tree). 68 px is `16 inset + 44 button + 8 air`, which is the row
+     below ONE button — and on a phone the top right stacks TWO: the block above
+     deliberately moves #fb-button under the gear rather than beside the title.
+     Photographed at 393x852 with the feedback button present, a bar at 68 ran
+     its top-right corner UNDER #fb-button. So the row is measured off the LOWER
+     button, as `16 + 2 x (button + air)`, written as the expression rather than
+     as the number so the next change to the button size carries the bar with
+     it. (#fb-button is created unconditionally by js/graphics.js, but LATE,
+     during graphics init — a gate that measures before it exists sees no
+     collision, and the first run of that gate did exactly that and passed.)
+
+     AND THEN THIS WHOLE RULE WAS DEAD FOR A COMMENT'S SAKE — see the header of
+     this section. It is one comment now, and the rule below it parses. */
+  #wf-pill{--wf-pill-inset:12px;
+    --wf-pill-top:calc(16px + 2 * var(--wf-btn-row));
+    /* the card's ceiling: the top of the bar, plus the bar's own closed height,
+       plus the room the drive controls need at the bottom.
+       168, NOT 128. 128 was the closed bar with nothing to say; a route over
+       the passing period carries a warning chip AND wraps the action row under
+       it, and measured on JES -> ANB at 390 x 844 the open card's bottom edge
+       landed at y781 — inside the joystick ring, which lives at roughly
+       y675-775. The allowance is now the taller of the two closed bars, so the
+       card gives up 40 px it can scroll instead of taking 40 px of the one
+       control this app is driven with. */
+    --wf-card-clear:calc(var(--wf-pill-top) + 168px + var(--drive-clear));
+    top:var(--wf-pill-top);left:var(--wf-pill-inset);right:var(--wf-pill-inset);
+    transform:none;width:auto;max-width:none;padding:10px 12px 11px}
+  /* `--wf-then` comes down with `--wf-big` so `, then a sharp left` — the
+     longest of the four turn words — still sits on one line beside a
+     four-character distance at 366 px of bar. */
+  #wf-root{--wf-big:25px;--wf-arrow:40px;--wf-then:14px;--wf-key-gap:12px}
+}
