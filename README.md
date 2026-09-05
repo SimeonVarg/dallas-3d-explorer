@@ -77,6 +77,17 @@ python scripts/update_manifest.py    # -> data/manifest.json
 and the snapshot date all live in [`scripts/config.sh`](scripts/config.sh) —
 that file is the single definition of how much city this repo contains.
 
+## Caching
+
+`vercel.json` marks `data/snapshots/<date>/` immutable for a year and everything
+else under `data/` one hour, revalidated. That split is deliberate: a snapshot's
+path carries its bake date, so a re-bake writes a *new* path and can never need
+to invalidate an old one. `data/roads.geojson`, `data/trees.geojson` and
+`data/highways.geojson` are overwritten *in place* by their bake scripts, so
+marking those immutable would mean a rebuild deploys correctly and then never
+reaches anyone who had already visited — for a year, indistinguishable from a
+cache miss.
+
 ## Honesty notes
 
 These are the places where the render is a claim rather than a measurement, in

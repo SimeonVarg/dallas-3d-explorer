@@ -2,29 +2,31 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "headers": [
     {
-      "//": "Snapshots are the ONLY genuinely immutable data here. Their path carries the bake date (data/snapshots/2026-09-05/...), so a re-bake writes a NEW path and can never need to invalidate an old one. A year is safe.",
       "source": "/data/snapshots/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
-      "//": "Everything else under data/ lives at a STABLE path -- data/roads.geojson, data/trees.geojson, data/highways.geojson are overwritten in place by their bake scripts. Marking these immutable was the first version of this file and it is a trap: a re-bake would deploy correctly and never reach anyone who had already visited, for a year, with no way to tell them apart from a cache miss. One hour, revalidated, so a rebuild lands on the next visit while repeat loads in one session still come from cache.",
       "source": "/data/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
       ]
     },
     {
-      "//": "Third-party libraries, pinned by version in the path.",
       "source": "/vendor/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
-      "//": "Application code. Ten minutes, matching what GitHub Pages sends, so behaviour here and on Pages stays comparable.",
-      "source": "/(js|.*\\.css)(.*)",
+      "source": "/js/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=600, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/style.css",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=600, must-revalidate" }
       ]
