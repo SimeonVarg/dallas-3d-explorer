@@ -1,0 +1,4 @@
+# Regenerable: z20 Esri nadir tiles fetched by scripts/bake_roofs.py --fetch.
+# 6,630 JPEGs / ~70 MB of reference input to a bake, never shipped to the browser.
+*
+!.gitignore

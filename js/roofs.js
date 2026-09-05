@@ -3,44 +3,46 @@
  *
  * WHY THIS FILE EXISTS. The app is a flyover: the camera spends most of its time
  * above the city looking down, so the surface the viewer actually sees most is
- * roofs. Before this pass every roof in the scene was one flat quad in
- * `rd` — and `rd` is derived in bake_detail.py as the building's own wall 12%
- * darker. So West Campus, which in the aerial is a field of BRIGHT WHITE TPO
- * membrane carpeted in condenser rows, rendered as a field of brown lids.
+ * roofs. Before this pass every roof in the scene was one flat quad painted `rd`
+ * — and `rd` is derived in bake_detail.py as the building's own wall 12% darker.
+ * So downtown Dallas, which in the aerial is pale grey built-up gravel, white
+ * membrane and a mechanical penthouse on every tower over 60 m, rendered as
+ * 2,220 brown and grey lids with nothing on any of them.
  *
- * `data/roofscape.geojson` (scripts/bake_roofscape.py) fixes both halves of
- * that, and the colour half matters more than the clutter half:
+ * This module was ported from the Austin build WORKING and then handed nothing:
+ * data/roofscape.geojson and data/roofscape.detail.geojson both 404'd on every
+ * load, and the console said so 106 times. The layers below were in the style
+ * the whole time. scripts/bake_roofscape.py is what finally fills them.
  *
  *   deck    one polygon per building in its OWN colour, measured off z20 Esri
  *           nadir imagery. It sits ON the parapet cap app.js already draws
  *           (CAP_GEOM), inset 1.1 m, so the cap reads as a rim around it.
  *
- *           THAT RIM WAS BURNT ORANGE FOR AS LONG AS THIS FILE HAS EXISTED, on
- *           every flat roof on campus, because `buildings-roof` is painted from
- *           the BUILDING's `rd` — a terracotta roof colour — and this deck is
- *           not. Measured at `day-tower-close`, the cap owned 9,543 px of
- *           rgb(173,88,51) around 81,414 px of rgb(151,138,114) deck
- *           (scripts/verify/roof-ring.mjs). It read as a selection highlight.
- *           The rim is still there and still reads as a parapet — it is now
- *           the deck's OWN colour, joined to the building offline by
- *           scripts/bake_roofs.py and applied to the building feature in
- *           js/app.js's loadScene. The sentence above is therefore still true;
- *           what changed is which palette the rim comes out of.
+ *           THAT RIM IS PAINTED FROM THE BUILDING'S `rd`, i.e. from its WALL —
+ *           so on a building with a grey membrane roof it was a warm brown ring
+ *           round a pale grey deck, on every flat roof in the city. The rim is
+ *           still there and still reads as a parapet; it now takes the deck's
+ *           own measured colour, joined to the building offline by
+ *           scripts/bake_roofs.py's `caps` table and applied to the building
+ *           FEATURE (not the layer's paint) in js/app.js's loadScene.
  *   clutter condensers, AHUs, fans, ducts, plant screens, stair/lift
  *           penthouses and rooftop pools — position, footprint, orientation and
  *           colour all measured from the same imagery. Height is the one
  *           generative number: a nadir photo cannot measure it.
  *
- * THE THING THAT WILL BITE YOU IS PERFORMANCE, not looks. This is a per-building
- * cost multiplied by ~1,700 buildings, on an app that has already auto-detected
- * ~30 fps and dropped itself into the `performance` preset. So the clutter is
- * split across two layers by SIZE, not by kind:
+ * THE THING THAT WILL BITE YOU IS PERFORMANCE, not looks. 12,144 features over
+ * 2,220 buildings, on an app that auto-detects its graphics preset and can land
+ * on `performance`. So the clutter is split across two layers by SIZE, not by
+ * kind:
  *
  *   ROOFS.majorMinZoom  things that read from flying altitude — plant screens,
- *                       penthouses, big banks, pools, and every deck
- *   ROOFS.minorMinZoom  individual condensers, vents, small ducts. Held back
- *                       until they are information rather than noise, exactly
- *                       the way props.js holds back benches.
+ *                       penthouses, big banks, pools, and every deck. 3,462
+ *                       features, 1.22 MB, always loaded.
+ *   ROOFS.minorMinZoom  individual condensers, vents, small ducts. 8,682
+ *                       features, 2.45 MB, and NOT FETCHED AT ALL until the
+ *                       camera first drops low enough to draw them — a flyover
+ *                       at z16 would otherwise pay that download and a worker
+ *                       re-tile for geometry it never shows.
  *
  * ...and DENSITY IS A PARAMETER, NOT A CULL, the same way tree density is. Every
  * clutter feature carries `d`, a keep-order in 0..1 ordered biggest-first per
@@ -73,8 +75,8 @@
   };
   window.ROOFSCAPE = ROOFS;
 
-  const SRC = 'city-roofscape';           // decks + tier 0 — 1.4 MB, always
-  const SRC_D = 'city-roofscape-detail';  // tier 1 — 2.4 MB, only if you go low
+  const SRC = 'city-roofscape';           // decks + tier 0 — 1.22 MB, always
+  const SRC_D = 'city-roofscape-detail';  // tier 1 — 2.45 MB, only if you go low
   const DECK = 'roofscape-deck', MAJOR = 'roofscape-major', MINOR = 'roofscape-minor';
   const LAYERS = [DECK, MAJOR, MINOR];
 
@@ -199,7 +201,7 @@
     _detailAsked = true;
     try {
       // The detail tier streams as tiles when data/tiles/roofdetail.pmtiles is
-      // there, and falls back to the whole 2.27 MB GeoJSON when it is not.
+      // there, and falls back to the whole 2.45 MB GeoJSON when it is not.
       // Source and layer are both built in THIS function, so layerProps can be
       // a local — unlike the roads pass, where they live in different functions
       // and a local threw out of scope and took the whole ground stage down.
@@ -278,16 +280,16 @@
   //
   // `map.isStyleLoaded()` is not "the style has been parsed" — it is false
   // while ANY source in the style is still loading, and this scene carries the
-  // core buildings, the outer ring, the ground, ~12,000 trees, ~6,000 props and
-  // six self-booting building passes that each add their own source seconds
+  // core buildings, the ground, the roads, the elevated highway decks, the
+  // trees and five self-booting passes that each add their own source seconds
   // apart. Probed 30 s after load on an idle machine it is still false while
   // `buildings-3d` has existed for ages. So the conjunction was only ever
   // satisfied if the poll happened to sample during a momentary gap in source
   // loading — which is a coin flip, and when it lost, the ENTIRE roofscape
-  // (3,649 + 8,034 features) simply was not in the scene and nothing said so.
+  // (3,462 + 8,682 features) simply was not in the scene and nothing said so.
   // A screenshot of that is a plausible-looking city with plain lids, which is
-  // exactly the state this pass exists to fix. It is also how this file's
-  // 12,058 features sat dead in the repo for days once before.
+  // exactly the state this pass exists to fix — and it is the state this repo
+  // actually shipped in, for a different reason (no data at all).
   //
   // The fix is the shape every other pass in this repo uses and that
   // docs/PASS_COMMON.md tells passes to copy verbatim from js/outer.js: take
