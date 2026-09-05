@@ -11,8 +11,9 @@ Built by Simeon Varghese.
 
 Every building in a 3.3 × 3.1 km box over downtown Dallas, extruded to its real
 LiDAR-derived height, on the real street grid, with the real park boundaries and
-the real elevated highway network. 2,220 buildings, 11,529 trees, 13,832 road
-ways, and 1,949 elevated deck slabs.
+the real elevated highway network. 2220 buildings, 11529 trees, 13832 road ways,
+1028 ground surfaces, and 1273 elevated deck slabs on 366 piers, the highest
+deck standing 28.4 m up.
 
 Two things get more attention than the rest:
 
